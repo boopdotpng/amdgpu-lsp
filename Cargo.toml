@@ -1,0 +1,11 @@
+[package]
+name = "rdna-lsp"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quick-xml = "0.36.2"
+serde = { version = "1.0.210", features = ["derive"] }
+serde_json = "1.0.128"
+tokio = { version = "1.39.3", features = ["io-std", "macros", "rt-multi-thread"] }
+tower-lsp = "0.20.0"

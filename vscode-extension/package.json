@@ -1,0 +1,56 @@
+{
+  "name": "rdna-lsp",
+  "displayName": "RDNA LSP",
+  "description": "Hover documentation for AMD RDNA/CDNA instructions.",
+  "version": "0.0.1",
+  "publisher": "rdna-lsp",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:asm",
+    "onLanguage:amdisa",
+    "onCommand:rdnaLsp.restart"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "rdnaLsp.restart",
+        "title": "RDNA LSP: Restart Server"
+      }
+    ],
+    "configuration": {
+      "title": "RDNA LSP",
+      "properties": {
+        "rdnaLsp.serverPath": {
+          "type": "string",
+          "default": "rdna-lsp",
+          "description": "Path to the rdna-lsp server binary. Defaults to rdna-lsp in PATH."
+        },
+        "rdnaLsp.dataPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to isa.json. If set, passed via RDNA_LSP_DATA."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p .",
+    "watch": "tsc -p . --watch",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.6.3",
+    "@vscode/vsce": "^3.2.0",
+    "vscode": "^1.1.37"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
