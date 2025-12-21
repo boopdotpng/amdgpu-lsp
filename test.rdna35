@@ -1,2 +1,37 @@
-S_ADD_I32 05 05
+// _Z4add1PfS_i
+s_clause 0x1
+s_load_b32 s3, s[0:1], 0x24
+s_load_b32 s4, s[0:1], 0x10
+s_waitcnt lgkmcnt(0)
+s_and_b32 s3, s3, 0xffff
+s_delay_alu instid0(SALU_CYCLE_1) | instskip(SKIP_1) | instid1(VALU_DEP_1)
+v_mad_u64_u32 v[0:1], null, s2, s3, v[0:1]
+v_mad_u64_u32 
+s_mov_b32 s2, exec_lo
+v_cmpx_gt_i32_e64 s4, v0
+s_cbranch_execz 20
+s_load_b128 s[0:3], s[0:1], null
+v_ashrrev_i32_e32 v1, 31, v0
+s_delay_alu instid0(VALU_DEP_1) | instskip(SKIP_1) | instid1(VALU_DEP_1)
+v_lshlrev_b64 v[0:1], 2, v[0:1]
+s_waitcnt lgkmcnt(0)
+v_add_co_u32 v2, vcc_lo, s0, v0
+s_delay_alu instid0(VALU_DEP_2)
+v_add_co_ci_u32_e32 v3, vcc_lo, s1, v1, vcc_lo
+v_add_co_u32 v0, vcc_lo, s2, v0
+v_add_co_ci_u32_e32 v1, vcc_lo, s3, v1, vcc_lo
+global_load_b32 v2, v[2:3], off
+s_waitcnt vmcnt(0)
+v_add_f32_e32 v2, 1.0, v2
+global_store_b32 v[0:1], v2, off
+s_nop 0
+s_sendmsg sendmsg(MSG_DEALLOC_VGPRS)
+s_endpgm
 
+// Test encoding variants:
+// v_add_f32      - native/base instruction
+// v_add_f32_e32  - VOP1/VOP2/VOPC (32-bit)
+// v_add_f32_e64  - VOP3 (64-bit)
+// v_add_f32_dpp  - DPP encoding
+// v_add_f32_sdwa - SDWA encoding
+// v_add_f32_e64_dpp - VOP3 DPP encoding>

@@ -21,6 +21,7 @@ struct Operand {
 
 #[derive(Debug, Default)]
 struct InstructionEncoding {
+  encoding_name: Option<String>,
   operands: Vec<Operand>,
 }
 
@@ -31,6 +32,7 @@ struct InstructionDoc {
   description: Option<String>,
   args: Vec<String>,
   arg_types: Vec<String>,
+  available_encodings: Vec<String>,
   #[serde(skip_serializing)]
   encodings: Vec<InstructionEncoding>,
 }
@@ -40,6 +42,7 @@ enum TextTarget {
   InstructionName,
   ArchitectureName,
   Description,
+  EncodingName,
   OperandFieldName,
   OperandType,
   OperandDataFormatName,
@@ -173,6 +176,7 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
   let mut current_operand: Option<Operand> = None;
   let mut text_target: Option<TextTarget> = None;
   let mut architecture_name: Option<String> = None;
+  let mut in_aliased_names: bool = false;
 
   loop {
     match reader.read_event_into(&mut buf) {
@@ -180,8 +184,13 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
         b"Instruction" => {
           current_instruction = Some(InstructionDoc::default());
         }
+        b"AliasedInstructionNames" => {
+          in_aliased_names = true;
+        }
         b"InstructionName" => {
-          text_target = Some(TextTarget::InstructionName);
+          if !in_aliased_names {
+            text_target = Some(TextTarget::InstructionName);
+          }
         }
         b"ArchitectureName" => {
           text_target = Some(TextTarget::ArchitectureName);
@@ -193,6 +202,11 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
         }
         b"InstructionEncoding" => {
           current_encoding = Some(InstructionEncoding::default());
+        }
+        b"EncodingName" => {
+          if current_encoding.is_some() {
+            text_target = Some(TextTarget::EncodingName);
+          }
         }
         b"Operand" => {
           current_operand = Some(parse_operand_attributes(event));
@@ -212,11 +226,22 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
         _ => {}
       },
       Ok(Event::End(ref event)) => match event.local_name().as_ref() {
+        b"AliasedInstructionNames" => {
+          in_aliased_names = false;
+        }
         b"Instruction" => {
           if let Some(mut inst) = current_instruction.take() {
             let (args, arg_types) = build_args(&inst.encodings);
             inst.args = args;
             inst.arg_types = arg_types;
+            // Collect unique encoding names
+            let mut encodings_set = std::collections::BTreeSet::new();
+            for enc in &inst.encodings {
+              if let Some(name) = &enc.encoding_name {
+                encodings_set.insert(name.clone());
+              }
+            }
+            inst.available_encodings = encodings_set.into_iter().collect();
             if let Some(arch) = architecture_name.clone() {
               inst.architectures.push(arch);
             }
@@ -234,6 +259,7 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
           }
         }
         b"InstructionName" | b"ArchitectureName" | b"Description"
+        | b"EncodingName"
         | b"FieldName"
         | b"OperandType"
         | b"DataFormatName"
@@ -259,6 +285,11 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
             TextTarget::Description => {
               if let Some(inst) = &mut current_instruction {
                 inst.description = Some(text);
+              }
+            }
+            TextTarget::EncodingName => {
+              if let Some(enc) = &mut current_encoding {
+                enc.encoding_name = Some(text);
               }
             }
             TextTarget::OperandFieldName => {
