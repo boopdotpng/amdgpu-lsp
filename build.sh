@@ -34,7 +34,20 @@ if [ -d "amd_gpu_xmls" ] && [ -n "$(ls -A amd_gpu_xmls)" ]; then
     echo_step "ISA XMLs already present, skipping fetch"
 else
     echo_step "Fetching ISA XMLs..."
-    ./fetch.sh
+    out_dir="amd_gpu_xmls"
+    tmp_dir="$(mktemp -d)"
+    zip_path="${tmp_dir}/isa.zip"
+
+    cleanup_fetch() {
+        rm -rf "${tmp_dir}"
+    }
+    trap cleanup_fetch EXIT
+
+    mkdir -p "${out_dir}"
+    curl -L "https://gpuopen.com/download/machine-readable-isa/latest/" -o "${zip_path}"
+    unzip -o "${zip_path}" -d "${out_dir}"
+
+    echo_step "Downloaded AMDGPU ISA files to ${out_dir}"
 fi
 
 # Step 2: Parse ISA and generate isa.json
