@@ -1,5 +1,14 @@
 # rdna-lsp
 
+## todos
+- [ ] figure out why some instructions are missing from isa.json (different mnemonics or encodings or variations that we don't parse?)
+- [ ] autocomplete / suggestions (simple find / match first characters for now)
+- [ ] operand count and basic type checking. linter errors before you run (goal is to catch >50% of flaws with code)
+- [ ] jump to label definition, go to definition, find all references
+- [ ] inlay hints of some kind? show type of register and the width?
+
+Any work beyond this point is superflous and is not worth my time. This is 80% of what someone would need to start learning and writing RDNA. 
+
 
 ## documentation
 This project is split into two parts. The LSP itself and the XML parser. 
