@@ -4,7 +4,7 @@
   "description": "AMDGPU RDNA/CDNA language server with completion, signature help, and documentation hovers.",
   "icon": "assets/amd-icon.png",
   "version": "0.1.0",
-  "publisher": "amdgpu-lsp",
+  "publisher": "boopdotpng",
   "repository": {
     "type": "git",
     "url": "https://github.com/boopdotpng/amdgpu-lsp.git",
@@ -34,6 +34,8 @@
     "language-configuration.json",
     "syntaxes/**",
     "assets/**",
+    "bin/**",
+    "data/**",
     "package.json",
     "README.md",
     "LICENSE"
@@ -131,15 +133,15 @@
       "properties": {
         "amdgpuLsp.serverPath": {
           "type": "string",
-          "default": "amdgpu-lsp",
+          "default": "",
           "title": "AMDGPU Language Server: Server Path",
-          "description": "Path to the amdgpu-lsp server binary. Defaults to amdgpu-lsp in PATH."
+          "description": "Optional path to the amdgpu-lsp server binary. Defaults to the bundled server, then amdgpu-lsp in PATH."
         },
         "amdgpuLsp.dataPath": {
           "type": "string",
           "default": "",
           "title": "AMDGPU Language Server: ISA Data Path",
-          "description": "Optional path to isa.json. If set, passed via AMDGPU_LSP_DATA."
+          "description": "Optional path to isa.json. If unset, the bundled data is used when available."
         },
         "amdgpuLsp.architecture": {
           "type": "string",

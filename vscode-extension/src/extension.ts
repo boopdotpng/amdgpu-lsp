@@ -1,4 +1,5 @@
 import * as fs from "fs";
+import * as path from "path";
 import * as vscode from "vscode";
 import {
   LanguageClient,
@@ -8,18 +9,30 @@ import {
 
 let client: LanguageClient | null = null;
 
-function resolveServerPath(): string {
+function resolveBundledServerPath(context: vscode.ExtensionContext): string | undefined {
+  const binaryName = process.platform === "win32" ? "amdgpu-lsp.exe" : "amdgpu-lsp";
+  const candidate = context.asAbsolutePath(path.join("bin", binaryName));
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+function resolveBundledDataPath(context: vscode.ExtensionContext): string | undefined {
+  const candidate = context.asAbsolutePath(path.join("data", "isa.json"));
+  return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+function resolveServerPath(context: vscode.ExtensionContext): string {
   const config = vscode.workspace.getConfiguration("amdgpuLsp");
   const configured = config.get<string>("serverPath");
   if (configured && configured.trim().length > 0) {
     return configured;
   }
-  return "amdgpu-lsp";
+  const bundled = resolveBundledServerPath(context);
+  return bundled ?? "amdgpu-lsp";
 }
 
-function resolveServerEnv(): NodeJS.ProcessEnv {
+function resolveServerEnv(context: vscode.ExtensionContext): NodeJS.ProcessEnv {
   const config = vscode.workspace.getConfiguration("amdgpuLsp");
-  const dataPath = config.get<string>("dataPath")?.trim();
+  const dataPath = config.get<string>("dataPath")?.trim() || resolveBundledDataPath(context);
   if (!dataPath) {
     return process.env;
   }
@@ -60,12 +73,12 @@ function validateServerPath(command: string): string | undefined {
   return undefined;
 }
 
-function createClient(command: string): LanguageClient {
+function createClient(command: string, env: NodeJS.ProcessEnv): LanguageClient {
   const serverOptions: ServerOptions = {
     command,
     args: [],
     options: {
-      env: resolveServerEnv(),
+      env,
       cwd: resolveServerCwd(),
     },
   };
@@ -93,13 +106,14 @@ function createClient(command: string): LanguageClient {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const startClient = async () => {
-    const command = resolveServerPath();
+    const command = resolveServerPath(context);
     const pathError = validateServerPath(command);
     if (pathError) {
       vscode.window.showErrorMessage(pathError);
       return;
     }
-    client = createClient(command);
+    const env = resolveServerEnv(context);
+    client = createClient(command, env);
     client.start();
     context.subscriptions.push(client);
   };

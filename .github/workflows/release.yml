@@ -1,0 +1,90 @@
+name: release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    if: "!contains(github.event.head_commit.message, 'chore: release')"
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      ref: ${{ steps.bump.outputs.ref }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Bump version
+        id: bump
+        run: |
+          version=$(bash scripts/bump_version.sh)
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml vscode-extension/package.json
+          git commit -m "chore: release v${version} [skip ci]"
+          git tag "v${version}"
+          git push origin HEAD:main --tags
+          ref=$(git rev-parse HEAD)
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "ref=${ref}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            vsce_target: linux-x64
+            rust_target: x86_64-unknown-linux-gnu
+          - os: windows-latest
+            vsce_target: win32-x64
+            rust_target: x86_64-pc-windows-msvc
+          - os: macos-13
+            vsce_target: darwin-x64
+            rust_target: x86_64-apple-darwin
+          - os: macos-14
+            vsce_target: darwin-arm64
+            rust_target: aarch64-apple-darwin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.bump.outputs.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+      - name: Package VSIX
+        shell: bash
+        run: |
+          ./package.sh --targets "${{ matrix.vsce_target }}"
+      - name: Upload VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.vsce_target }}
+          path: vscode-extension/*.vsix
+
+  release:
+    needs: [build, bump]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.bump.outputs.version }}
+          name: v${{ needs.bump.outputs.version }}
+          files: artifacts/**/*.vsix
