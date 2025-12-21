@@ -1,0 +1,70 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "RDNA ISA",
+  "scopeName": "source.rdna",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#labels" },
+    { "include": "#mnemonic" },
+    { "include": "#registers" },
+    { "include": "#numbers" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.rdna",
+          "match": ";.*$"
+        }
+      ]
+    },
+    "labels": {
+      "patterns": [
+        {
+          "name": "entity.name.label.rdna",
+          "match": "^(\\s*[A-Za-z_][A-Za-z0-9_]*)(?=:)"
+        }
+      ]
+    },
+    "mnemonic": {
+      "patterns": [
+        {
+          "name": "keyword.operator.instruction.rdna",
+          "match": "^(\\s*(?:[A-Za-z_][A-Za-z0-9_]*:)?\\s*)(?i:[.A-Za-z][A-Za-z0-9_.]*)(?=\\s|$)"
+        }
+      ]
+    },
+    "registers": {
+      "patterns": [
+        {
+          "name": "variable.other.register.rdna",
+          "match": "\\b[vs][0-9]+\\b"
+        },
+        {
+          "name": "variable.other.register.rdna",
+          "match": "\\b[vs]\\[[0-9]+(?::[0-9]+)?\\]\\b"
+        },
+        {
+          "name": "variable.other.register.rdna",
+          "match": "\\b(vcc|exec|m0|scc|null)\\b"
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.rdna",
+          "match": "\\b0x[0-9a-fA-F]+\\b"
+        },
+        {
+          "name": "constant.numeric.binary.rdna",
+          "match": "\\b0b[01]+\\b"
+        },
+        {
+          "name": "constant.numeric.decimal.rdna",
+          "match": "\\b-?[0-9]+\\b"
+        }
+      ]
+    }
+  }
+}

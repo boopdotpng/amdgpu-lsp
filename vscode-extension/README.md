@@ -25,6 +25,7 @@ npm run build
 
 - `rdnaLsp.serverPath`: Path to the `rdna-lsp` binary. Defaults to `rdna-lsp` in PATH.
 - `rdnaLsp.dataPath`: Optional path to `isa.json`. If set, passed as `RDNA_LSP_DATA`.
+- `rdnaLsp.architecture`: Optional architecture override (e.g. `rdna3.5`, `rdna4`, `cdna4`).
 
 ## Packaging
 
