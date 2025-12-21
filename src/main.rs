@@ -5,10 +5,12 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
-  Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, MarkupContent,
-  MarkupKind, MessageType, ParameterInformation, ParameterLabel, Position, ServerCapabilities, SignatureHelp,
-  SignatureHelpOptions, SignatureHelpParams, SignatureInformation, TextDocumentContentChangeEvent,
-  TextDocumentItem, TextDocumentSyncCapability, TextDocumentSyncKind, Url,
+  CompletionItem, CompletionItemKind, CompletionList, CompletionOptions, CompletionParams, CompletionResponse,
+  CompletionTextEdit, Hover, HoverContents, HoverParams, HoverProviderCapability, InitializeParams, InitializeResult,
+  MarkupContent, MarkupKind, MessageType, ParameterInformation, ParameterLabel, Position, Range, ServerCapabilities,
+  SignatureHelp,
+  SignatureHelpOptions, SignatureHelpParams, SignatureInformation, TextDocumentContentChangeEvent, TextDocumentItem,
+  TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer, LspService, Server};
 
@@ -112,6 +114,17 @@ fn utf16_position_to_byte_offset(line: &str, position: Position) -> usize {
   line.len()
 }
 
+fn byte_offset_to_utf16_position(line: &str, byte_offset: usize) -> u32 {
+  let mut utf16_count = 0;
+  for (idx, ch) in line.char_indices() {
+    if idx >= byte_offset {
+      break;
+    }
+    utf16_count += ch.len_utf16() as u32;
+  }
+  utf16_count
+}
+
 fn extract_word_at_position(text: &str, position: Position) -> Option<String> {
   let line = text.lines().nth(position.line as usize)?;
   let byte_index = utf16_position_to_byte_offset(line, position);
@@ -132,6 +145,24 @@ fn extract_word_at_position(text: &str, position: Position) -> Option<String> {
     return None;
   }
   Some(line[start..end].to_string())
+}
+
+fn extract_word_prefix_at_position(text: &str, position: Position) -> Option<(String, usize)> {
+  let line = text.lines().nth(position.line as usize)?;
+  let byte_index = utf16_position_to_byte_offset(line, position);
+  let bytes = line.as_bytes();
+  if byte_index > bytes.len() {
+    return None;
+  }
+  let is_word = |b: u8| b.is_ascii_alphanumeric() || b == b'_';
+  let mut start = byte_index;
+  while start > 0 && is_word(bytes[start - 1]) {
+    start -= 1;
+  }
+  if start == byte_index {
+    return None;
+  }
+  Some((line[start..byte_index].to_string(), start))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -507,6 +538,13 @@ impl LanguageServer for IsaServer {
           retrigger_characters: None,
           work_done_progress_options: Default::default(),
         }),
+        completion_provider: Some(CompletionOptions {
+          trigger_characters: None,
+          resolve_provider: Some(false),
+          work_done_progress_options: Default::default(),
+          all_commit_characters: None,
+          completion_item: None,
+        }),
         ..ServerCapabilities::default()
       },
       ..InitializeResult::default()
@@ -740,6 +778,66 @@ impl LanguageServer for IsaServer {
       active_signature: Some(0),
       active_parameter: None,
     }))
+  }
+
+  async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
+    let uri = params.text_document_position.text_document.uri;
+    let position = params.text_document_position.position;
+    let doc = match self.get_document(&uri) {
+      Some(doc) => doc,
+      None => return Ok(None),
+    };
+
+    let (prefix, prefix_start) = match extract_word_prefix_at_position(&doc.text, position) {
+      Some((prefix, prefix_start)) => (prefix, prefix_start),
+      None => return Ok(None),
+    };
+
+    let trimmed_prefix = prefix.trim();
+    if trimmed_prefix.len() < 2 {
+      return Ok(None);
+    }
+
+    let line = match doc.text.lines().nth(position.line as usize) {
+      Some(line) => line,
+      None => return Ok(None),
+    };
+
+    let prefix_lower = trimmed_prefix.to_ascii_lowercase();
+    let start_char = byte_offset_to_utf16_position(line, prefix_start);
+    let start = Position {
+      line: position.line,
+      character: start_char,
+    };
+    let range = Range { start, end: position };
+
+    let mut seen = std::collections::HashSet::new();
+    let mut items = Vec::new();
+    for (name, entries) in &self.index {
+      if !name.starts_with(&prefix_lower) {
+        continue;
+      }
+      if let Some(entry) = entries.first() {
+        if seen.insert(entry.name.clone()) {
+          items.push(CompletionItem {
+            label: entry.name.clone(),
+            kind: Some(CompletionItemKind::KEYWORD),
+            text_edit: Some(CompletionTextEdit::Edit(TextEdit {
+              range: range.clone(),
+              new_text: entry.name.clone(),
+            })),
+            ..CompletionItem::default()
+          });
+        }
+      }
+    }
+
+    items.sort_by(|a, b| a.label.cmp(&b.label));
+
+    Ok(Some(CompletionResponse::List(CompletionList {
+      is_incomplete: false,
+      items,
+    })))
   }
 
   async fn shutdown(&self) -> Result<()> {

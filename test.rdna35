@@ -28,10 +28,11 @@ s_nop 0
 s_sendmsg sendmsg(MSG_DEALLOC_VGPRS)
 s_endpgm
 
+
 // Test encoding variants:
 // v_add_f32      - native/base instruction
 // v_add_f32_e32  - VOP1/VOP2/VOPC (32-bit)
 // v_add_f32_e64  - VOP3 (64-bit)
 // v_add_f32_dpp  - DPP encoding
 // v_add_f32_sdwa - SDWA encoding
-// v_add_f32_e64_dpp - VOP3 DPP encoding>
+// v_add_f32_e64_dpp - VOP3 DPP encoding

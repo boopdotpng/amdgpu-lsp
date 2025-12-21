@@ -29,24 +29,32 @@ else
     echo_warning "bun not found, using npm instead"
 fi
 
-# Step 1: Parse ISA and generate isa.json
+# Step 1: Fetch ISA XMLs if needed
+if [ -d "amd_gpu_xmls" ] && [ -n "$(ls -A amd_gpu_xmls)" ]; then
+    echo_step "ISA XMLs already present, skipping fetch"
+else
+    echo_step "Fetching ISA XMLs..."
+    ./fetch.sh
+fi
+
+# Step 2: Parse ISA and generate isa.json
 echo_step "Parsing ISA and generating data/isa.json..."
 cargo run --bin parse_isa
 
-# Step 2: Build LSP server
+# Step 3: Build LSP server
 echo_step "Building LSP server..."
 cargo build --release
 
-# Step 3: Install extension dependencies
+# Step 4: Install extension dependencies
 echo_step "Installing extension dependencies with $PKG_MANAGER..."
 cd vscode-extension
 $PKG_MANAGER install
 
-# Step 4: Build extension
+# Step 5: Build extension
 echo_step "Building extension..."
 $PKG_MANAGER run build
 
-# Step 5: Package extension
+# Step 6: Package extension
 echo_step "Packaging extension..."
 $PKG_MANAGER_X vsce package
 
@@ -58,7 +66,7 @@ if [ -z "$VSIX_FILE" ]; then
 fi
 echo_step "Generated: $VSIX_FILE"
 
-# Step 6: Uninstall existing extension
+# Step 7: Uninstall existing extension
 echo_step "Uninstalling existing rdna-lsp extension..."
 if code --uninstall-extension rdna-lsp.rdna-lsp 2>/dev/null; then
     echo "Successfully uninstalled previous version"
@@ -66,7 +74,7 @@ else
     echo_warning "Extension was not installed or failed to uninstall (this is OK if first install)"
 fi
 
-# Step 7: Install new extension
+# Step 8: Install new extension
 echo_step "Installing new extension..."
 code --install-extension "$VSIX_FILE"
 
