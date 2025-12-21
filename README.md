@@ -4,8 +4,7 @@
 - [x] figure out why some instructions are missing from isa.json (different mnemonics or encodings or variations that we don't parse?)
 - [x] autocomplete / suggestions (simple find / match first characters for now)
 - [ ] code review to make sure AI didn't write stupid code 
-- [ ] performance analysis / memory reduction 
-- [ ] add unit tests? 
+- [ ] performance analysis / memory reduction / extension size reduction
 
 Any work beyond this point is superflous and is not worth my time. This is 80% of what someone would need to start learning and writing RDNA. 
 
