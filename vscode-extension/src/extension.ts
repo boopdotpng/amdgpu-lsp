@@ -9,28 +9,28 @@ import {
 let client: LanguageClient | null = null;
 
 function resolveServerPath(): string {
-  const config = vscode.workspace.getConfiguration("rdnaLsp");
+  const config = vscode.workspace.getConfiguration("amdgpuLsp");
   const configured = config.get<string>("serverPath");
   if (configured && configured.trim().length > 0) {
     return configured;
   }
-  return "rdna-lsp";
+  return "amdgpu-lsp";
 }
 
 function resolveServerEnv(): NodeJS.ProcessEnv {
-  const config = vscode.workspace.getConfiguration("rdnaLsp");
+  const config = vscode.workspace.getConfiguration("amdgpuLsp");
   const dataPath = config.get<string>("dataPath")?.trim();
   if (!dataPath) {
     return process.env;
   }
   return {
     ...process.env,
-    RDNA_LSP_DATA: dataPath,
+    AMDGPU_LSP_DATA: dataPath,
   };
 }
 
 function resolveArchitectureOverride(): string | undefined {
-  const config = vscode.workspace.getConfiguration("rdnaLsp");
+  const config = vscode.workspace.getConfiguration("amdgpuLsp");
   const override = config.get<string>("architecture")?.trim();
   return override ? override : undefined;
 }
@@ -46,15 +46,15 @@ function resolveServerCwd(): string | undefined {
 function validateServerPath(command: string): string | undefined {
   if (command.includes("/") || command.includes("\\")) {
     if (!fs.existsSync(command)) {
-      return `RDNA LSP server not found at ${command}`;
+      return `AMDGPU LSP server not found at ${command}`;
     }
     try {
       const stat = fs.statSync(command);
       if (!stat.isFile()) {
-        return `RDNA LSP server path is not a file: ${command}`;
+        return `AMDGPU LSP server path is not a file: ${command}`;
       }
     } catch (error) {
-      return `RDNA LSP server path is not accessible: ${command}`;
+      return `AMDGPU LSP server path is not accessible: ${command}`;
     }
   }
   return undefined;
@@ -82,13 +82,13 @@ function createClient(command: string): LanguageClient {
       { scheme: "file", language: "cdna3" },
       { scheme: "file", language: "cdna4" },
     ],
-    outputChannelName: "RDNA LSP",
+    outputChannelName: "AMDGPU Language Server",
     initializationOptions: {
       architectureOverride: resolveArchitectureOverride(),
     },
   };
 
-  return new LanguageClient("rdnaLsp", "RDNA LSP", serverOptions, clientOptions);
+  return new LanguageClient("amdgpuLsp", "AMDGPU Language Server", serverOptions, clientOptions);
 }
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -105,7 +105,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   context.subscriptions.push(
-    vscode.commands.registerCommand("rdnaLsp.restart", async () => {
+    vscode.commands.registerCommand("amdgpuLsp.restart", async () => {
       if (client) {
         await client.stop();
         client = null;

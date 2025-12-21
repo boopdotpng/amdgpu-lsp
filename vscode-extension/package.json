@@ -1,12 +1,13 @@
 {
-  "name": "rdna-lsp",
-  "displayName": "RDNA LSP",
-  "description": "Hover documentation for AMD RDNA/CDNA instructions.",
+  "name": "amdgpu-lsp",
+  "displayName": "AMDGPU Language Server",
+  "description": "AMDGPU RDNA/CDNA language server with completion, signature help, and documentation hovers.",
+  "icon": "assets/amd-icon.png",
   "version": "0.1.0",
-  "publisher": "rdna-lsp",
+  "publisher": "amdgpu-lsp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/boopdotpng/rdna-lsp.git",
+    "url": "https://github.com/boopdotpng/amdgpu-lsp.git",
     "directory": "vscode-extension"
   },
   "engines": {
@@ -25,13 +26,14 @@
     "onLanguage:cdna",
     "onLanguage:cdna3",
     "onLanguage:cdna4",
-    "onCommand:rdnaLsp.restart"
+    "onCommand:amdgpuLsp.restart"
   ],
   "main": "./dist/extension.js",
   "files": [
     "dist/**",
     "language-configuration.json",
     "syntaxes/**",
+    "assets/**",
     "package.json",
     "README.md",
     "LICENSE"
@@ -120,26 +122,29 @@
     ],
     "commands": [
       {
-        "command": "rdnaLsp.restart",
-        "title": "RDNA LSP: Restart Server"
+        "command": "amdgpuLsp.restart",
+        "title": "AMDGPU Language Server: Restart"
       }
     ],
     "configuration": {
-      "title": "RDNA LSP",
+      "title": "AMDGPU Language Server",
       "properties": {
-        "rdnaLsp.serverPath": {
+        "amdgpuLsp.serverPath": {
           "type": "string",
-          "default": "rdna-lsp",
-          "description": "Path to the rdna-lsp server binary. Defaults to rdna-lsp in PATH."
+          "default": "amdgpu-lsp",
+          "title": "AMDGPU Language Server: Server Path",
+          "description": "Path to the amdgpu-lsp server binary. Defaults to amdgpu-lsp in PATH."
         },
-        "rdnaLsp.dataPath": {
+        "amdgpuLsp.dataPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to isa.json. If set, passed via RDNA_LSP_DATA."
+          "title": "AMDGPU Language Server: ISA Data Path",
+          "description": "Optional path to isa.json. If set, passed via AMDGPU_LSP_DATA."
         },
-        "rdnaLsp.architecture": {
+        "amdgpuLsp.architecture": {
           "type": "string",
           "default": "",
+          "title": "AMDGPU Language Server: Architecture Override",
           "description": "Optional architecture override (e.g. rdna3.5, rdna4, cdna4)."
         }
       }

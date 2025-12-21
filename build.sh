@@ -71,7 +71,7 @@ $PKG_MANAGER run build
 echo_step "Packaging extension..."
 $PKG_MANAGER_X vsce package
 
-# Get the generated VSIX filename (should be rdna-lsp-0.1.0.vsix based on package.json)
+# Get the generated VSIX filename (should be amdgpu-lsp-0.1.0.vsix based on package.json)
 VSIX_FILE=$(ls -t *.vsix | head -n 1)
 if [ -z "$VSIX_FILE" ]; then
     echo_error "No .vsix file found after packaging!"
@@ -80,8 +80,8 @@ fi
 echo_step "Generated: $VSIX_FILE"
 
 # Step 7: Uninstall existing extension
-echo_step "Uninstalling existing rdna-lsp extension..."
-if code --uninstall-extension rdna-lsp.rdna-lsp 2>/dev/null; then
+echo_step "Uninstalling existing amdgpu-lsp extension..."
+if code --uninstall-extension amdgpu-lsp.amdgpu-lsp 2>/dev/null; then
     echo "Successfully uninstalled previous version"
 else
     echo_warning "Extension was not installed or failed to uninstall (this is OK if first install)"
@@ -95,9 +95,9 @@ cd ..
 
 echo_step "${GREEN}Build complete!${NC}"
 echo ""
-echo "The LSP server binary is at: target/release/rdna-lsp"
+echo "The LSP server binary is at: target/release/amdgpu-lsp"
 echo "The extension has been installed in VS Code"
 echo ""
 echo "You may need to reload VS Code for changes to take effect."
 
-echo "If you're running this extension locally, you will need to manually set the rdna-lsp binary path and the path to isa.json in VS Code settings."
+echo "If you're running this extension locally, you will need to manually set the amdgpu-lsp binary path and the path to isa.json in VS Code settings."

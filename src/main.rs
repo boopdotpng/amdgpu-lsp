@@ -65,7 +65,7 @@ impl IsaServer {
 }
 
 fn load_isa_index() -> (HashMap<String, Vec<InstructionEntry>>, IsaLoadInfo) {
-  let data_path = env::var("RDNA_LSP_DATA").unwrap_or_else(|_| "data/isa.json".to_string());
+  let data_path = env::var("AMDGPU_LSP_DATA").unwrap_or_else(|_| "data/isa.json".to_string());
   let contents = match fs::read_to_string(&data_path) {
     Ok(text) => text,
     Err(error) => {
