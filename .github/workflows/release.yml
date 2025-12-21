@@ -3,7 +3,7 @@ name: release
 on:
   push:
     branches:
-      - main
+      - master
 
 permissions:
   contents: write
@@ -32,7 +32,7 @@ jobs:
           git add Cargo.toml vscode-extension/package.json
           git commit -m "chore: release v${version} [skip ci]"
           git tag "v${version}"
-          git push origin HEAD:main --tags
+          git push origin HEAD:master --tags
           ref=$(git rev-parse HEAD)
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "ref=${ref}" >> "$GITHUB_OUTPUT"
