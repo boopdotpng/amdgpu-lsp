@@ -5,6 +5,8 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+BOLD='\033[1m'
 NC='\033[0m' # No Color
 
 echo_step() {
@@ -19,6 +21,40 @@ echo_warning() {
     echo -e "${YELLOW}Warning:${NC} $1"
 }
 
+show_help() {
+    echo -e "${BLUE}${BOLD}amdgpu-lsp build script${NC}"
+    echo -e "${BOLD}Usage:${NC} ./build.sh [options]"
+    echo ""
+    echo -e "${BOLD}Options:${NC}"
+    echo -e "  ${YELLOW}--fetch-latest${NC}  Download latest ISA XMLs and overwrite ${GREEN}amd_gpu_xmls/${NC}"
+    echo -e "  ${YELLOW}-h, --help${NC}     Show this help menu"
+}
+
+FETCH_LATEST=false
+SHOW_HELP=false
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --fetch-latest)
+            FETCH_LATEST=true
+            ;;
+        -h|--help)
+            SHOW_HELP=true
+            ;;
+        *)
+            echo_error "Unknown option: $1"
+            show_help
+            exit 1
+            ;;
+    esac
+    shift
+done
+
+if [ "$SHOW_HELP" = true ]; then
+    show_help
+    exit 0
+fi
+
 # Check if bun is available
 if command -v bun &> /dev/null; then
     PKG_MANAGER="bun"
@@ -29,10 +65,7 @@ else
     echo_warning "bun not found, using npm instead"
 fi
 
-# Step 1: Fetch ISA XMLs if needed
-if [ -d "amd_gpu_xmls" ] && [ -n "$(ls -A amd_gpu_xmls)" ]; then
-    echo_step "ISA XMLs already present, skipping fetch"
-else
+fetch_isa() {
     echo_step "Fetching ISA XMLs..."
     out_dir="amd_gpu_xmls"
     tmp_dir="$(mktemp -d)"
@@ -48,6 +81,17 @@ else
     unzip -o "${zip_path}" -d "${out_dir}"
 
     echo_step "Downloaded AMDGPU ISA files to ${out_dir}"
+}
+
+# Step 1: Fetch ISA XMLs if needed
+if [ "$FETCH_LATEST" = true ]; then
+    echo_step "Fetching latest ISA XMLs (overwriting existing)..."
+    rm -rf "amd_gpu_xmls"
+    fetch_isa
+elif [ -d "amd_gpu_xmls" ] && [ -n "$(ls -A amd_gpu_xmls)" ]; then
+    echo_step "ISA XMLs already present, skipping fetch"
+else
+    fetch_isa
 fi
 
 # Step 2: Parse ISA and generate isa.json
@@ -58,16 +102,32 @@ cargo run --bin parse_isa
 echo_step "Building LSP server..."
 cargo build --release
 
-# Step 4: Install extension dependencies
+# Step 4: Stage bundled server/data into the extension
+echo_step "Staging bundled server/data for extension..."
+BIN_FILE="target/release/amdgpu-lsp"
+DATA_FILE="data/isa.json"
+if [ ! -f "${BIN_FILE}" ]; then
+    echo_error "Missing ${BIN_FILE}. Cargo build did not produce the server binary."
+    exit 1
+fi
+if [ ! -f "${DATA_FILE}" ]; then
+    echo_error "Missing ${DATA_FILE}. ISA generation did not produce isa.json."
+    exit 1
+fi
+mkdir -p vscode-extension/bin vscode-extension/data
+cp "${BIN_FILE}" "vscode-extension/bin/amdgpu-lsp"
+cp "${DATA_FILE}" "vscode-extension/data/isa.json"
+
+# Step 5: Install extension dependencies
 echo_step "Installing extension dependencies with $PKG_MANAGER..."
 cd vscode-extension
 $PKG_MANAGER install
 
-# Step 5: Build extension
+# Step 6: Build extension
 echo_step "Building extension..."
 $PKG_MANAGER run build
 
-# Step 6: Package extension
+# Step 7: Package extension
 echo_step "Packaging extension..."
 $PKG_MANAGER_X vsce package
 
@@ -79,7 +139,7 @@ if [ -z "$VSIX_FILE" ]; then
 fi
 echo_step "Generated: $VSIX_FILE"
 
-# Step 7: Uninstall existing extension
+# Step 8: Uninstall existing extension
 echo_step "Uninstalling existing amdgpu-lsp extension..."
 if code --uninstall-extension amdgpu-lsp.amdgpu-lsp 2>/dev/null; then
     echo "Successfully uninstalled previous version"
@@ -87,7 +147,7 @@ else
     echo_warning "Extension was not installed or failed to uninstall (this is OK if first install)"
 fi
 
-# Step 8: Install new extension
+# Step 9: Install new extension
 echo_step "Installing new extension..."
 code --install-extension "$VSIX_FILE"
 
