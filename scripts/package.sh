@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EXT_DIR="${ROOT_DIR}/vscode-extension"
 DATA_FILE="${ROOT_DIR}/data/isa.json"
+MINIFIED_DATA_FILE="${EXT_DIR}/data/isa.json"
 
 usage() {
   cat <<EOF
@@ -101,7 +102,20 @@ for TARGET in "${TARGET_LIST[@]}"; do
   echo "Staging bundled assets for ${TARGET}..."
   mkdir -p "${EXT_DIR}/bin" "${EXT_DIR}/data"
   cp "${BIN_FILE}" "${EXT_DIR}/bin/${BIN_NAME}"
-  cp "${DATA_FILE}" "${EXT_DIR}/data/isa.json"
+  echo "Compacting ISA JSON for ${TARGET}..."
+  python - <<'PY' "${DATA_FILE}" "${MINIFIED_DATA_FILE}"
+import json
+import sys
+
+src = sys.argv[1]
+dst = sys.argv[2]
+
+with open(src, "r", encoding="utf-8") as f:
+  data = json.load(f)
+
+with open(dst, "w", encoding="utf-8") as f:
+  json.dump(data, f, separators=(",", ":"))
+PY
 
   echo "Packaging VSIX for ${TARGET}..."
   ${PKG_MANAGER_X} vsce package --target "${TARGET}"

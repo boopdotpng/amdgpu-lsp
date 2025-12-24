@@ -55,16 +55,6 @@ if [ "$SHOW_HELP" = true ]; then
     exit 0
 fi
 
-# Check if bun is available
-if command -v bun &> /dev/null; then
-    PKG_MANAGER="bun"
-    PKG_MANAGER_X="bunx"
-else
-    PKG_MANAGER="npm"
-    PKG_MANAGER_X="npx"
-    echo_warning "bun not found, using npm instead"
-fi
-
 fetch_isa() {
     echo_step "Fetching ISA XMLs..."
     out_dir="amd_gpu_xmls"
@@ -83,6 +73,48 @@ fetch_isa() {
     echo_step "Downloaded AMDGPU ISA files to ${out_dir}"
 }
 
+detect_target() {
+    local os arch os_id arch_id
+    os="$(uname -s)"
+    arch="$(uname -m)"
+
+    case "${os}" in
+        Linux)
+            os_id="linux"
+            ;;
+        Darwin)
+            os_id="darwin"
+            ;;
+        MINGW*|MSYS*|CYGWIN*|Windows_NT)
+            os_id="win32"
+            ;;
+        *)
+            echo_error "Unsupported OS: ${os}"
+            exit 1
+            ;;
+    esac
+
+    case "${arch}" in
+        x86_64|amd64)
+            arch_id="x64"
+            ;;
+        aarch64|arm64)
+            arch_id="arm64"
+            ;;
+        *)
+            echo_error "Unsupported architecture: ${arch}"
+            exit 1
+            ;;
+    esac
+
+    if [ "${os_id}" = "win32" ] && [ "${arch_id}" != "x64" ]; then
+        echo_error "Unsupported Windows architecture: ${arch}"
+        exit 1
+    fi
+
+    echo "${os_id}-${arch_id}"
+}
+
 # Step 1: Fetch ISA XMLs if needed
 if [ "$FETCH_LATEST" = true ]; then
     echo_step "Fetching latest ISA XMLs (overwriting existing)..."
@@ -98,41 +130,13 @@ fi
 echo_step "Parsing ISA and generating data/isa.json..."
 cargo run --bin parse_isa
 
-# Step 3: Build LSP server
-echo_step "Building LSP server..."
-cargo build --release
-
-# Step 4: Stage bundled server/data into the extension
-echo_step "Staging bundled server/data for extension..."
-BIN_FILE="target/release/amdgpu-lsp"
-DATA_FILE="data/isa.json"
-if [ ! -f "${BIN_FILE}" ]; then
-    echo_error "Missing ${BIN_FILE}. Cargo build did not produce the server binary."
-    exit 1
-fi
-if [ ! -f "${DATA_FILE}" ]; then
-    echo_error "Missing ${DATA_FILE}. ISA generation did not produce isa.json."
-    exit 1
-fi
-mkdir -p vscode-extension/bin vscode-extension/data
-cp "${BIN_FILE}" "vscode-extension/bin/amdgpu-lsp"
-cp "${DATA_FILE}" "vscode-extension/data/isa.json"
-
-# Step 5: Install extension dependencies
-echo_step "Installing extension dependencies with $PKG_MANAGER..."
-cd vscode-extension
-$PKG_MANAGER install
-
-# Step 6: Build extension
-echo_step "Building extension..."
-$PKG_MANAGER run build
-
-# Step 7: Package extension
-echo_step "Packaging extension..."
-$PKG_MANAGER_X vsce package
+# Step 3: Build and package extension for the local platform
+LOCAL_TARGET="$(detect_target)"
+echo_step "Packaging extension for ${LOCAL_TARGET}..."
+scripts/package.sh --targets "${LOCAL_TARGET}"
 
 # Get the generated VSIX filename (should be amdgpu-lsp-0.1.0.vsix based on package.json)
-VSIX_FILE=$(ls -t *.vsix | head -n 1)
+VSIX_FILE=$(ls -t vscode-extension/*.vsix | head -n 1)
 if [ -z "$VSIX_FILE" ]; then
     echo_error "No .vsix file found after packaging!"
     exit 1
@@ -150,8 +154,6 @@ fi
 # Step 9: Install new extension
 echo_step "Installing new extension..."
 code --install-extension "$VSIX_FILE"
-
-cd ..
 
 echo_step "${GREEN}Build complete!${NC}"
 echo ""

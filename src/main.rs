@@ -103,6 +103,10 @@ fn load_isa_index() -> (HashMap<String, Vec<InstructionEntry>>, IsaLoadInfo) {
   )
 }
 
+fn format_mnemonic(name: &str) -> String {
+  name.to_ascii_lowercase()
+}
+
 fn utf16_position_to_byte_offset(line: &str, position: Position) -> usize {
   let mut utf16_count = 0;
   for (idx, ch) in line.char_indices() {
@@ -456,7 +460,7 @@ fn format_architectures(architectures: &[String]) -> String {
 
 fn format_hover(entry: &InstructionEntry, variant: &EncodingVariant) -> HoverContents {
   let mut lines = Vec::new();
-  lines.push(format!("**{}**", entry.name));
+  lines.push(format!("**{}**", format_mnemonic(&entry.name)));
 
   if !entry.architectures.is_empty() {
     lines.push(format!("Architectures: {}", format_architectures(&entry.architectures)));
@@ -733,7 +737,7 @@ impl LanguageServer for IsaServer {
     };
 
     // Build signature with parameter information
-    let mut label = entry.name.clone();
+    let mut label = format_mnemonic(&entry.name);
     let mut parameters = Vec::new();
 
     if !entry.args.is_empty() {
@@ -818,13 +822,14 @@ impl LanguageServer for IsaServer {
         continue;
       }
       if let Some(entry) = entries.first() {
-        if seen.insert(entry.name.clone()) {
+        let label = format_mnemonic(&entry.name);
+        if seen.insert(label.clone()) {
           items.push(CompletionItem {
-            label: entry.name.clone(),
+            label: label.clone(),
             kind: Some(CompletionItemKind::KEYWORD),
             text_edit: Some(CompletionTextEdit::Edit(TextEdit {
               range: range.clone(),
-              new_text: entry.name.clone(),
+              new_text: label,
             })),
             ..CompletionItem::default()
           });
