@@ -850,7 +850,7 @@ impl LanguageServer for IsaServer {
   }
 }
 
-#[tokio::main]
+#[tokio::main(flavor = "current_thread")]
 async fn main() {
   let (index, load_info) = load_isa_index();
   let stdin = tokio::io::stdin();

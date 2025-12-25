@@ -27,16 +27,37 @@ show_help() {
     echo ""
     echo -e "${BOLD}Options:${NC}"
     echo -e "  ${YELLOW}--fetch-latest${NC}  Download latest ISA XMLs and overwrite ${GREEN}amd_gpu_xmls/${NC}"
+    echo -e "  ${YELLOW}--extension-mode${NC}  Extension build mode: debug or release (default: release)"
+    echo -e "  ${YELLOW}--no-minify${NC}  Disable minification for the extension bundle (release mode only)"
+    echo -e "  ${YELLOW}--include-meta${NC}  Keep esbuild metafile at vscode-extension/dist/meta.json"
+    echo -e "  ${YELLOW}--minify-json${NC}  Minify isa.json even in debug builds"
     echo -e "  ${YELLOW}-h, --help${NC}     Show this help menu"
 }
 
 FETCH_LATEST=false
 SHOW_HELP=false
+EXTENSION_MODE="release"
+NO_MINIFY=false
+INCLUDE_META=false
+MINIFY_JSON=false
 
 while [ $# -gt 0 ]; do
     case "$1" in
         --fetch-latest)
             FETCH_LATEST=true
+            ;;
+        --extension-mode)
+            EXTENSION_MODE="${2:-}"
+            shift
+            ;;
+        --no-minify)
+            NO_MINIFY=true
+            ;;
+        --include-meta)
+            INCLUDE_META=true
+            ;;
+        --minify-json)
+            MINIFY_JSON=true
             ;;
         -h|--help)
             SHOW_HELP=true
@@ -53,6 +74,11 @@ done
 if [ "$SHOW_HELP" = true ]; then
     show_help
     exit 0
+fi
+
+if [ "${EXTENSION_MODE}" != "debug" ] && [ "${EXTENSION_MODE}" != "release" ]; then
+    echo_error "Unknown extension mode: ${EXTENSION_MODE} (use debug or release)"
+    exit 1
 fi
 
 fetch_isa() {
@@ -133,7 +159,17 @@ cargo run --bin parse_isa
 # Step 3: Build and package extension for the local platform
 LOCAL_TARGET="$(detect_target)"
 echo_step "Packaging extension for ${LOCAL_TARGET}..."
-scripts/package.sh --targets "${LOCAL_TARGET}"
+PACKAGE_ARGS=(--targets "${LOCAL_TARGET}" --mode "${EXTENSION_MODE}")
+if [ "${NO_MINIFY}" = true ]; then
+    PACKAGE_ARGS+=(--no-minify)
+fi
+if [ "${INCLUDE_META}" = true ]; then
+    PACKAGE_ARGS+=(--include-meta)
+fi
+if [ "${MINIFY_JSON}" = true ]; then
+    PACKAGE_ARGS+=(--minify-json)
+fi
+scripts/package.sh "${PACKAGE_ARGS[@]}"
 
 # Get the generated VSIX filename (should be amdgpu-lsp-0.1.0.vsix based on package.json)
 VSIX_FILE=$(ls -t vscode-extension/*.vsix | head -n 1)

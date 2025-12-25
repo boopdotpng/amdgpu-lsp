@@ -4,7 +4,6 @@
   "scopeName": "source.rdna",
   "patterns": [
     { "include": "#comments" },
-    { "include": "#labels" },
     { "include": "#mnemonic" },
     { "include": "#registers" },
     { "include": "#numbers" }
@@ -15,14 +14,10 @@
         {
           "name": "comment.line.semicolon.rdna",
           "match": ";.*$"
-        }
-      ]
-    },
-    "labels": {
-      "patterns": [
+        },
         {
-          "name": "entity.name.label.rdna",
-          "match": "^(\\s*[A-Za-z_][A-Za-z0-9_]*)(?=:)"
+          "name": "comment.line.double-slash.rdna",
+          "match": "//.*$"
         }
       ]
     },
@@ -30,7 +25,7 @@
       "patterns": [
         {
           "name": "keyword.operator.instruction.rdna",
-          "match": "^(\\s*(?:[A-Za-z_][A-Za-z0-9_]*:)?\\s*)(?i:[.A-Za-z][A-Za-z0-9_.]*)(?=\\s|$)"
+          "match": "^(\\s*(?:[0-9A-Fa-f]{4,}:)?\\s*(?:[0-9A-Fa-f]{8}\\s+)*)(?i:[.A-Za-z][A-Za-z0-9_.]*)(?=\\s|$)"
         }
       ]
     },
@@ -46,7 +41,7 @@
         },
         {
           "name": "variable.other.register.rdna",
-          "match": "\\b(vcc|exec|m0|scc|null)\\b"
+          "match": "\\b(vcc|vcc_lo|vcc_hi|exec|exec_lo|exec_hi|m0|scc|null)\\b"
         }
       ]
     },

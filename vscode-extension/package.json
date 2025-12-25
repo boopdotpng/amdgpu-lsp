@@ -153,7 +153,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -p . --noEmit && esbuild src/extension.ts --bundle --platform=node --target=node18 --sourcemap --outfile=dist/extension.js --external:vscode",
+    "build": "tsc -p . --noEmit && esbuild src/extension.ts --bundle --platform=node --target=node18 --sourcemap --outfile=dist/extension.js --external:vscode $ESBUILD_FLAGS",
+    "build:release": "tsc -p . --noEmit && esbuild src/extension.ts --bundle --platform=node --target=node18 --minify --outfile=dist/extension.js --external:vscode $ESBUILD_FLAGS",
+    "build:release:nomini": "tsc -p . --noEmit && esbuild src/extension.ts --bundle --platform=node --target=node18 --outfile=dist/extension.js --external:vscode $ESBUILD_FLAGS",
     "watch": "tsc -p . --noEmit --watch",
     "package": "vsce package"
   },

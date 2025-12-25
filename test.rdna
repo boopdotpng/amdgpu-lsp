@@ -1,0 +1,24 @@
+; Sample RDNA ISA instruction stream for syntax highlighting and LSP testing
+; Not meant to assemble or run on hardware
+
+s_mov_b32 s0, 0x3f800000 ; 1.0f
+s_mov_b32 s1, 0b101010   ; 42
+s_mov_b32 s2, -7
+
+v_mov_b32 v0, s0
+v_mov_b32 v1, s1
+v_mov_b32 v2, s2
+
+v_add_f32 v3, v0, v1
+v_mul_f32 v4, v3, v0
+v_sub_f32 v5, v4, v2
+
+s_cmp_eq_u32 s1, 42
+s_and_b64 vcc, exec, vcc
+s_mov_b64 exec, 0x0
+s_endpgm
+
+; Extra tokens for highlighting coverage
+v_mov_b32 v[0:3], v0
+s_mov_b32 m0, 0
+v_xor_b32 v8, v7, null
