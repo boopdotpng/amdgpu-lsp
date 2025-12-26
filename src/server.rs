@@ -303,14 +303,20 @@ impl LanguageServer for IsaServer {
 
     let line_before_cursor = &line[..cursor_byte.min(line.len())];
     let trimmed_before_cursor = line_before_cursor.trim_start();
-    let args_typed = trimmed_before_cursor
+    let args_section = match trimmed_before_cursor
       .splitn(2, |c: char| c.is_whitespace())
       .nth(1)
-      .map(|args| args.split(',').filter(|arg| !arg.trim().is_empty()).count())
-      .unwrap_or(0);
-    if !entry.args.is_empty() && args_typed >= entry.args.len() {
-      return Ok(None);
-    }
+    {
+      Some(args_section) => args_section,
+      None => return Ok(None),
+    };
+    let commas_before_cursor = args_section.chars().filter(|&c| c == ',').count();
+    let active_parameter = if entry.args.is_empty() {
+      None
+    } else {
+      let last_index = entry.args.len().saturating_sub(1);
+      Some(commas_before_cursor.min(last_index) as u32)
+    };
 
     // Build signature with parameter information
     let mut label = format_mnemonic(&entry.name);
@@ -350,13 +356,13 @@ impl LanguageServer for IsaServer {
         tower_lsp::lsp_types::Documentation::String(desc.clone())
       }),
       parameters: Some(parameters),
-      active_parameter: None,
+      active_parameter,
     };
 
     Ok(Some(SignatureHelp {
       signatures: vec![signature],
       active_signature: Some(0),
-      active_parameter: None,
+      active_parameter,
     }))
   }
 
