@@ -6,11 +6,30 @@ ROOT_DIR="$(cd "${HOOK_DIR}/../.." && pwd)"
 SET_VERSION="${ROOT_DIR}/scripts/set-version.sh"
 
 read_version() {
-  rg -n "^version = " "${ROOT_DIR}/Cargo.toml" | head -n 1 | sed -E 's/^version = "([^"]+)".*/\1/'
+  python - <<'PY' "${ROOT_DIR}/Cargo.toml"
+import re
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+  data = f.read()
+
+match = re.search(r'^version = "([^"]+)"$', data, re.M)
+print(match.group(1) if match else "")
+PY
 }
 
 read_extension_version() {
-  rg -n '"version":' "${ROOT_DIR}/vscode-extension/package.json" | head -n 1 | sed -E 's/.*"version": "([^"]+)".*/\1/'
+  python - <<'PY' "${ROOT_DIR}/vscode-extension/package.json"
+import json
+import sys
+
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as f:
+  data = json.load(f)
+
+print(data.get("version", ""))
+PY
 }
 
 set_from_tag() {
