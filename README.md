@@ -1,5 +1,13 @@
 # amdgpu-lsp
 
+## features 
+- Goto definition for labels inside branch instructions
+- Autocomplete for all RDNA/CDNA instructions 
+- Hover documentation for every instruction containing arguments, argument types, and info about encodings when present
+- Syntax highlighting for rdna files
+- Documentation for all special registers (exec, execz, etc)
+- Instruction filtering by architecture (file type associations .rdna35, .cdna3, etc or you can set it globally in extension settings)
+
 ## todos
 - [x] figure out why some instructions are missing from isa.json (different mnemonics or encodings or variations that we don't parse?)
 - [x] autocomplete / suggestions (simple find / match first characters for now)
