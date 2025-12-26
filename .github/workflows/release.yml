@@ -60,7 +60,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: isa-json
-          path: .
+          path: data/
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: "latest"

@@ -169,7 +169,7 @@ for TARGET in "${TARGET_LIST[@]}"; do
   esac
 
   echo "Building release server for ${TARGET} (${RUST_TARGET})..."
-  cargo build --locked --release --target "${RUST_TARGET}"
+  cargo build --locked --release --target "${RUST_TARGET}" --bin amdgpu-lsp
 
   BIN_FILE="${ROOT_DIR}/target/${RUST_TARGET}/release/${BIN_NAME}"
   if [ ! -f "${BIN_FILE}" ]; then
