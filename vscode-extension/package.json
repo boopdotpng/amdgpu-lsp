@@ -3,7 +3,7 @@
   "displayName": "AMDGPU Language Server",
   "description": "AMDGPU RDNA/CDNA language server with completion, signature help, and documentation hovers.",
   "icon": "assets/amd-icon.png",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "publisher": "boopdotpng",
   "repository": {
     "type": "git",
