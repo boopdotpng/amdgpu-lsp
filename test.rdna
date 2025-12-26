@@ -25,7 +25,7 @@ start:
   s_mov_b64       exec, 0
   s_mov_b64       vcc, -1
   v_mov_b32       v7, exec_lo
-  v_mov_b32       v8, exec_hi
+  v_mov_b32       v8, exec 
   v_mov_b32       v9, vcc_lo
   v_mov_b32       v10, vcc_hi
   v_mov_b32_e64   v11, null
@@ -34,6 +34,7 @@ start:
   s_add_u32       s10, s10, 1
   s_cmp_lt_u32    s10, 4
   s_cbranch_scc1  loop
+  s_cbranch_scc1 4
   s_branch        done
   v_ashrrev_i32 
 
@@ -49,7 +50,7 @@ done:
   v_mov_b32       v[0:3], v0              ; register range
   s_mov_b32       s[20:22], s1            ; scalar range
   v_add_f32	v13,	v1,	v2                 ; tabs
-  s_mov_b32       s99, 0xFFFFFFFF         ; max 32-bit literal
+  s_mov_b32       s99, 0xFFFFFFFF          ; max 32-bit literal
   v_mov_b32       v14, -2.5e-3            ; scientific notation
 
 ; === Intentional diagnostics ===

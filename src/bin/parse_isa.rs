@@ -42,13 +42,216 @@ struct InstructionDoc {
 struct SpecialRegister {
   name: String,
   description: Option<String>,
-  value: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct SpecialRegisterRangeOverride {
+  index: u32,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  description: Option<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct SpecialRegisterRange {
+  prefix: String,
+  start: u32,
+  count: u32,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  description: Option<String>,
+  #[serde(default, skip_serializing_if = "Vec::is_empty")]
+  overrides: Vec<SpecialRegisterRangeOverride>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct SpecialRegistersOutput {
+  singles: Vec<SpecialRegister>,
+  ranges: Vec<SpecialRegisterRange>,
 }
 
 #[derive(Debug, Default, Serialize)]
 struct IsaOutput {
   instructions: Vec<InstructionDoc>,
-  special_registers: Vec<SpecialRegister>,
+  special_registers: SpecialRegistersOutput,
+}
+
+fn is_see_above(desc: &str) -> bool {
+  desc.trim() == "<p>See above.</p>" || desc.trim().eq_ignore_ascii_case("see above")
+}
+
+fn is_numeric_literal(name: &str) -> bool {
+  name.parse::<f64>().is_ok()
+}
+
+fn special_register_override(name: &str) -> Option<&'static str> {
+  match name {
+    "exec" => Some("Wavefront execution mask (64-bit). Each bit enables a lane."),
+    "exec_lo" => Some("Lower 32 bits of EXEC (lane execution mask)."),
+    "exec_hi" => Some("Upper 32 bits of EXEC (lane execution mask)."),
+    "scc" => Some("Scalar condition code (single-bit compare result)."),
+    "src_scc" => Some("Scalar condition code (single-bit compare result)."),
+    "vcc" => Some("Vector condition code register (64-bit). Per-lane compare results."),
+    "vcc_lo" => Some("Lower 32 bits of VCC (vector condition codes)."),
+    "vcc_hi" => Some("Upper 32 bits of VCC (vector condition codes)."),
+    "pc" => Some("Program counter (64-bit)."),
+    "flat_scratch" => Some("Flat scratch base/size pair (64-bit)."),
+    "flat_scratch_lo" => Some("Lower 32 bits of FLAT_SCRATCH (base/size)."),
+    "flat_scratch_hi" => Some("Upper 32 bits of FLAT_SCRATCH (base/size)."),
+    _ => None,
+  }
+}
+
+fn split_numeric_suffix(name: &str) -> Option<(&str, u32)> {
+  let mut split_at = None;
+  for (i, ch) in name.char_indices() {
+    if ch.is_ascii_digit() {
+      split_at = Some(i);
+      break;
+    }
+  }
+  let i = split_at?;
+  let (prefix, digits) = name.split_at(i);
+  if prefix.is_empty() || digits.is_empty() {
+    return None;
+  }
+  let num = digits.parse::<u32>().ok()?;
+  Some((prefix, num))
+}
+
+fn compress_special_registers(all: Vec<SpecialRegister>) -> SpecialRegistersOutput {
+  // Compress contiguous numeric families; values are not retained in the output.
+  let mut groups: BTreeMap<String, Vec<(u32, SpecialRegister)>> = BTreeMap::new();
+  let mut singles: Vec<SpecialRegister> = Vec::new();
+
+  for reg in all {
+    if let Some((prefix, idx)) = split_numeric_suffix(&reg.name) {
+      groups
+        .entry(prefix.to_string())
+        .or_default()
+        .push((idx, reg));
+    } else {
+      singles.push(reg);
+    }
+  }
+
+  // These are the big families we know are ranges in the ISA docs.
+  let compress_prefixes: BTreeSet<&'static str> = ["attr", "param", "mrt", "pos", "ttmp"]
+    .into_iter()
+    .collect();
+
+  let mut ranges: Vec<SpecialRegisterRange> = Vec::new();
+  let mut leftover_singles: Vec<SpecialRegister> = Vec::new();
+
+  for (prefix, mut items) in groups {
+    if !compress_prefixes.contains(prefix.as_str()) {
+      let fallback = items
+        .iter()
+        .filter_map(|(_idx, reg)| reg.description.as_ref())
+        .find(|desc| !desc.trim().is_empty() && !is_see_above(desc))
+        .cloned();
+      // Keep as singles, filling in "See above" or empty descriptions when possible.
+      for (_idx, mut reg) in items {
+        let needs_fallback = reg
+          .description
+          .as_deref()
+          .map(|desc| desc.trim().is_empty() || is_see_above(desc))
+          .unwrap_or(true);
+        if needs_fallback {
+          reg.description = fallback.clone();
+        }
+        if reg
+          .description
+          .as_deref()
+          .map(|desc| desc.trim().is_empty())
+          .unwrap_or(true)
+        {
+          continue;
+        }
+        leftover_singles.push(reg);
+      }
+      continue;
+    }
+
+    items.sort_by_key(|(idx, _)| *idx);
+    if items.is_empty() {
+      continue;
+    }
+
+    let start = items[0].0;
+    let end = items[items.len() - 1].0;
+    let expected_count = (end - start + 1) as usize;
+    let is_contiguous = expected_count == items.len() && items
+      .iter()
+      .enumerate()
+      .all(|(offset, (idx, _))| *idx == start + offset as u32);
+
+    // Require a real range (3+).
+    if !is_contiguous || items.len() < 3 {
+      for (_idx, reg) in items {
+        leftover_singles.push(reg);
+      }
+      continue;
+    }
+
+    // Choose the most common non-empty, non-"See above" description from the family.
+    // This yields compact overrides for cases like TTMP where one entry has extra detail.
+    let mut desc_counts: BTreeMap<String, u32> = BTreeMap::new();
+    for (_idx, r) in &items {
+      if let Some(d) = &r.description {
+        if !d.trim().is_empty() && !is_see_above(d) {
+          *desc_counts.entry(d.clone()).or_insert(0) += 1;
+        }
+      }
+    }
+    let range_description: Option<String> = desc_counts
+      .into_iter()
+      .max_by(|a, b| a.1.cmp(&b.1))
+      .map(|(d, _count)| d);
+
+    // Add per-index overrides when the description differs materially.
+    let mut overrides: Vec<SpecialRegisterRangeOverride> = Vec::new();
+    for (idx, r) in &items {
+      let mut override_desc = None;
+      if let Some(d) = &r.description {
+        // Only keep an override if it's non-empty and different from the range description.
+        if !d.trim().is_empty() {
+          let differs = match &range_description {
+            Some(rd) => rd != d,
+            None => true,
+          };
+          if differs && !is_see_above(d) {
+            override_desc = Some(d.clone());
+          }
+        }
+      }
+      if override_desc.is_some() {
+        overrides.push(SpecialRegisterRangeOverride {
+          index: *idx,
+          description: override_desc,
+        });
+      }
+    }
+
+    ranges.push(SpecialRegisterRange {
+      prefix,
+      start,
+      count: items.len() as u32,
+      description: range_description,
+      overrides,
+    });
+  }
+
+  singles.extend(leftover_singles);
+  singles.retain(|reg| {
+    reg
+      .description
+      .as_deref()
+      .map(|desc| !desc.trim().is_empty() && !is_see_above(desc))
+      .unwrap_or(false)
+  });
+  singles.sort_by(|a, b| a.name.cmp(&b.name));
+  ranges.sort_by(|a, b| a.prefix.cmp(&b.prefix));
+
+  SpecialRegistersOutput { singles, ranges }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -207,7 +410,6 @@ fn parse_special_registers(path: &Path) -> Result<Vec<SpecialRegister>, Box<dyn 
             current_register = Some(SpecialRegister {
               name: String::new(),
               description: None,
-              value: None,
             });
           }
         }
@@ -223,7 +425,8 @@ fn parse_special_registers(path: &Path) -> Result<Vec<SpecialRegister>, Box<dyn 
         }
         b"Value" => {
           if current_register.is_some() {
-            text_target = Some(TextTarget::OperandSize);
+            // We intentionally ignore numeric encodings in the output.
+            text_target = None;
           }
         }
         _ => {}
@@ -259,9 +462,7 @@ fn parse_special_registers(path: &Path) -> Result<Vec<SpecialRegister>, Box<dyn 
               }
             }
             TextTarget::OperandSize => {
-              if let Some(reg) = &mut current_register {
-                reg.value = text.parse::<u32>().ok();
-              }
+              // Numeric encodings are intentionally not stored in isa.json.
             }
             _ => {}
           }
@@ -580,9 +781,21 @@ fn main() -> Result<(), Box<dyn Error>> {
           if is_plain_vector_or_scalar_register(&reg.name.to_ascii_lowercase()) {
             continue;
           }
+          if is_numeric_literal(&reg.name) {
+            continue;
+          }
+          let mut reg = reg;
+          if let Some(desc) = &reg.description {
+            if is_see_above(desc) {
+              reg.description = None;
+            }
+          }
+          if let Some(override_desc) = special_register_override(&reg.name.to_ascii_lowercase()) {
+            reg.description = Some(override_desc.to_string());
+          }
           let key = reg.name.to_ascii_lowercase();
           if let Some(existing) = special_registers_by_name.get_mut(&key) {
-            let SpecialRegister { description, value, .. } = reg;
+            let SpecialRegister { description, .. } = reg;
             if let Some(description) = description {
               let should_replace = match &existing.description {
                 Some(current) => description.len() > current.len(),
@@ -591,9 +804,6 @@ fn main() -> Result<(), Box<dyn Error>> {
               if should_replace {
                 existing.description = Some(description);
               }
-            }
-            if existing.value.is_none() {
-              existing.value = value;
             }
           } else {
             special_registers_by_name.insert(key, reg);
@@ -609,7 +819,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
   let isa_output = IsaOutput {
     instructions: merged,
-    special_registers: all_special_registers,
+    special_registers: compress_special_registers(all_special_registers),
   };
 
   let json = serde_json::to_string_pretty(&isa_output)?;

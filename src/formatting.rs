@@ -95,10 +95,6 @@ pub fn format_special_register_hover(register: &SpecialRegister) -> HoverContent
   let mut lines = Vec::new();
   lines.push(format!("**{}**", register.name));
 
-  if let Some(value) = register.value {
-    lines.push(format!("Value: {value}"));
-  }
-
   if let Some(description) = &register.description {
     if !description.is_empty() {
       lines.push(description.clone());

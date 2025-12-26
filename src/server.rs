@@ -3,6 +3,7 @@ use crate::encoding::split_encoding_variant;
 use crate::formatting::{format_hover, format_mnemonic, format_special_register_hover};
 use crate::text_utils::{
   byte_offset_to_utf16_position, extract_word_at_position, extract_word_prefix_at_position,
+  utf16_position_to_byte_offset,
 };
 use crate::types::{DocumentState, DocumentStore, InstructionEntry, IsaLoadInfo, SpecialRegister};
 use std::collections::HashMap;
@@ -252,6 +253,12 @@ impl LanguageServer for IsaServer {
       Some(line) => line,
       None => return Ok(None),
     };
+    let cursor_byte = utf16_position_to_byte_offset(line, position);
+    if let Some(comment_start) = line.find(';') {
+      if cursor_byte >= comment_start {
+        return Ok(None);
+      }
+    }
 
     // Find the instruction at the start of the line (before any spaces/commas)
     let instruction = line
@@ -291,6 +298,17 @@ impl LanguageServer for IsaServer {
     } else {
       &entries[0]
     };
+
+    let line_before_cursor = &line[..cursor_byte.min(line.len())];
+    let trimmed_before_cursor = line_before_cursor.trim_start();
+    let args_typed = trimmed_before_cursor
+      .splitn(2, |c: char| c.is_whitespace())
+      .nth(1)
+      .map(|args| args.split(',').filter(|arg| !arg.trim().is_empty()).count())
+      .unwrap_or(0);
+    if !entry.args.is_empty() && args_typed >= entry.args.len() {
+      return Ok(None);
+    }
 
     // Build signature with parameter information
     let mut label = format_mnemonic(&entry.name);

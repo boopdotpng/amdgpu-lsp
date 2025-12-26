@@ -1,4 +1,4 @@
-use crate::types::{InstructionEntry, IsaData, IsaLoadInfo, SpecialRegister};
+use crate::types::{InstructionEntry, IsaData, IsaLoadInfo, SpecialRegister, SpecialRegistersData};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -42,9 +42,23 @@ pub fn load_isa_index() -> (
       .or_default()
       .push(entry);
   }
+
+  let mut special_registers: Vec<SpecialRegister> = match isa_data.special_registers {
+    SpecialRegistersData::Flat(list) => list,
+    SpecialRegistersData::Compressed(data) => {
+      let mut expanded = data.singles;
+      for range in data.ranges {
+        expanded.extend(range.expand());
+      }
+      expanded
+    }
+  };
+  // Keep stable ordering for predictable output and lookups.
+  special_registers.sort_by(|a, b| a.name.cmp(&b.name));
+
   (
     index,
-    isa_data.special_registers,
+    special_registers,
     IsaLoadInfo {
       data_path,
       load_error: None,
