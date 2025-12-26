@@ -10,7 +10,7 @@ import {
 let client: LanguageClient | null = null;
 
 function resolveBundledServerPath(context: vscode.ExtensionContext): string | undefined {
-  const binaryName = process.platform === "win32" ? "amdgpu-lsp.exe" : "amdgpu-lsp";
+  const binaryName = "amdgpu-lsp";
   const candidate = context.asAbsolutePath(path.join("bin", binaryName));
   return fs.existsSync(candidate) ? candidate : undefined;
 }

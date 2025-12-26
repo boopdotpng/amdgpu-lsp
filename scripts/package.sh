@@ -45,11 +45,11 @@ Usage: $(basename "$0") [--targets <list>] [--mode <debug|release>] [--no-minify
 
 Examples:
   $(basename "$0") --targets linux-x64
-  $(basename "$0") --targets linux-x64,win32-x64,darwin-arm64 --mode release
+  $(basename "$0") --targets linux-x64,darwin-arm64 --mode release
   $(basename "$0") --targets linux-x64 --include-meta --no-minify --minify-json
 
 Targets:
-  linux-x64, linux-arm64, win32-x64, darwin-x64, darwin-arm64
+  linux-x64, linux-arm64, darwin-x64, darwin-arm64
 EOF
 }
 
@@ -149,10 +149,6 @@ for TARGET in "${TARGET_LIST[@]}"; do
     linux-arm64)
       RUST_TARGET="aarch64-unknown-linux-gnu"
       BIN_NAME="amdgpu-lsp"
-      ;;
-    win32-x64)
-      RUST_TARGET="x86_64-pc-windows-msvc"
-      BIN_NAME="amdgpu-lsp.exe"
       ;;
     darwin-x64)
       RUST_TARGET="x86_64-apple-darwin"

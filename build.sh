@@ -111,9 +111,6 @@ detect_target() {
         Darwin)
             os_id="darwin"
             ;;
-        MINGW*|MSYS*|CYGWIN*|Windows_NT)
-            os_id="win32"
-            ;;
         *)
             echo_error "Unsupported OS: ${os}"
             exit 1
@@ -132,11 +129,6 @@ detect_target() {
             exit 1
             ;;
     esac
-
-    if [ "${os_id}" = "win32" ] && [ "${arch_id}" != "x64" ]; then
-        echo_error "Unsupported Windows architecture: ${arch}"
-        exit 1
-    fi
 
     echo "${os_id}-${arch_id}"
 }
