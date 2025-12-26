@@ -64,7 +64,6 @@ jobs:
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: "latest"
-          cache: true
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
