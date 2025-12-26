@@ -1,7 +1,7 @@
 use quick_xml::events::{BytesStart, Event};
 use quick_xml::Reader;
 use serde::Serialize;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::env;
 use std::error::Error;
 use std::fs;
@@ -32,9 +32,23 @@ struct InstructionDoc {
   description: Option<String>,
   args: Vec<String>,
   arg_types: Vec<String>,
+  arg_data_types: Vec<String>,
   available_encodings: Vec<String>,
   #[serde(skip_serializing)]
   encodings: Vec<InstructionEncoding>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+struct SpecialRegister {
+  name: String,
+  description: Option<String>,
+  value: Option<u32>,
+}
+
+#[derive(Debug, Default, Serialize)]
+struct IsaOutput {
+  instructions: Vec<InstructionDoc>,
+  special_registers: Vec<SpecialRegister>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -145,12 +159,13 @@ fn operand_kind(operand: &Operand) -> String {
   "unknown".to_string()
 }
 
-fn build_args(encodings: &[InstructionEncoding]) -> (Vec<String>, Vec<String>) {
+fn build_args(encodings: &[InstructionEncoding]) -> (Vec<String>, Vec<String>, Vec<String>) {
   if encodings.is_empty() {
-    return (Vec::new(), Vec::new());
+    return (Vec::new(), Vec::new(), Vec::new());
   }
   let mut args = Vec::new();
   let mut arg_types = Vec::new();
+  let mut arg_data_types = Vec::new();
   let mut operands = encodings[0].operands.clone();
   operands.sort_by_key(|operand| operand.order.unwrap_or(u32::MAX));
   for operand in operands {
@@ -160,8 +175,119 @@ fn build_args(encodings: &[InstructionEncoding]) -> (Vec<String>, Vec<String>) {
     let label = operand_label(&operand).unwrap_or_else(|| "operand".to_string());
     args.push(label);
     arg_types.push(operand_kind(&operand));
+    arg_data_types.push(
+      operand
+        .data_format_name
+        .clone()
+        .unwrap_or_else(|| "unknown".to_string()),
+    );
   }
-  (args, arg_types)
+  (args, arg_types, arg_data_types)
+}
+
+fn parse_special_registers(path: &Path) -> Result<Vec<SpecialRegister>, Box<dyn Error>> {
+  let file = fs::File::open(path)?;
+  let mut reader = Reader::from_reader(std::io::BufReader::new(file));
+  reader.config_mut().trim_text(true);
+
+  let mut buf = Vec::new();
+  let mut special_registers: Vec<SpecialRegister> = Vec::new();
+  let mut current_register: Option<SpecialRegister> = None;
+  let mut in_predefined_values = false;
+  let mut text_target: Option<TextTarget> = None;
+
+  loop {
+    match reader.read_event_into(&mut buf) {
+      Ok(Event::Start(ref event)) => match event.local_name().as_ref() {
+        b"OperandPredefinedValues" => {
+          in_predefined_values = true;
+        }
+        b"PredefinedValue" => {
+          if in_predefined_values {
+            current_register = Some(SpecialRegister {
+              name: String::new(),
+              description: None,
+              value: None,
+            });
+          }
+        }
+        b"Name" => {
+          if current_register.is_some() {
+            text_target = Some(TextTarget::InstructionName);
+          }
+        }
+        b"Description" => {
+          if current_register.is_some() {
+            text_target = Some(TextTarget::Description);
+          }
+        }
+        b"Value" => {
+          if current_register.is_some() {
+            text_target = Some(TextTarget::OperandSize);
+          }
+        }
+        _ => {}
+      },
+      Ok(Event::End(ref event)) => match event.local_name().as_ref() {
+        b"OperandPredefinedValues" => {
+          in_predefined_values = false;
+        }
+        b"PredefinedValue" => {
+          if let Some(reg) = current_register.take() {
+            if !reg.name.is_empty() {
+              special_registers.push(reg);
+            }
+          }
+        }
+        b"Name" | b"Description" | b"Value" => {
+          text_target = None;
+        }
+        _ => {}
+      },
+      Ok(Event::Text(event)) => {
+        if let Some(target) = text_target {
+          let text = event.unescape()?.to_string();
+          match target {
+            TextTarget::InstructionName => {
+              if let Some(reg) = &mut current_register {
+                reg.name = text;
+              }
+            }
+            TextTarget::Description => {
+              if let Some(reg) = &mut current_register {
+                reg.description = Some(text);
+              }
+            }
+            TextTarget::OperandSize => {
+              if let Some(reg) = &mut current_register {
+                reg.value = text.parse::<u32>().ok();
+              }
+            }
+            _ => {}
+          }
+        }
+      }
+      Ok(Event::Eof) => break,
+      Err(err) => return Err(Box::new(err)),
+      _ => {}
+    }
+    buf.clear();
+  }
+
+  Ok(special_registers)
+}
+
+fn is_plain_vector_or_scalar_register(name: &str) -> bool {
+  let mut chars = name.chars();
+  let prefix = match chars.next() {
+    Some(prefix) => prefix,
+    None => return false,
+  };
+  if prefix != 'v' && prefix != 's' {
+    return false;
+  }
+  let rest = chars.as_str();
+  !rest.is_empty() && rest.chars().all(|ch| ch.is_ascii_digit())
 }
 
 fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), Box<dyn Error>> {
@@ -231,17 +357,18 @@ fn parse_instruction_file(path: &Path) -> Result<(String, Vec<InstructionDoc>), 
         }
         b"Instruction" => {
           if let Some(mut inst) = current_instruction.take() {
-            let (args, arg_types) = build_args(&inst.encodings);
+            let (args, arg_types, arg_data_types) = build_args(&inst.encodings);
             inst.args = args;
             inst.arg_types = arg_types;
+            inst.arg_data_types = arg_data_types;
             // Collect unique encoding names
-            let mut encodings_set = std::collections::BTreeSet::new();
-            for enc in &inst.encodings {
-              if let Some(name) = &enc.encoding_name {
-                encodings_set.insert(name.clone());
-              }
-            }
-            inst.available_encodings = encodings_set.into_iter().collect();
+            inst.available_encodings = inst
+              .encodings
+              .iter()
+              .filter_map(|enc| enc.encoding_name.clone())
+              .collect::<BTreeSet<_>>()
+              .into_iter()
+              .collect();
             if let Some(arch) = architecture_name.clone() {
               inst.architectures.push(arch);
             }
@@ -403,9 +530,11 @@ fn main() -> Result<(), Box<dyn Error>> {
   }
 
   let mut merged: Vec<InstructionDoc> = Vec::new();
-  let mut seen = BTreeSet::new();
-  for input in xml_files {
-    let (architecture_name, mut instructions) = parse_instruction_file(&input)?;
+  let mut key_to_index: HashMap<String, usize> = HashMap::new();
+  let mut special_registers_by_name: BTreeMap<String, SpecialRegister> = BTreeMap::new();
+
+  for input in &xml_files {
+    let (architecture_name, mut instructions) = parse_instruction_file(input)?;
     let normalized_architecture = normalize_architecture_name(&architecture_name);
     for inst in &mut instructions {
       if inst.architectures.is_empty() {
@@ -426,29 +555,64 @@ fn main() -> Result<(), Box<dyn Error>> {
         inst.args.join(","),
         inst.arg_types.join(",")
       );
-      if seen.insert(key) {
-        merged.push(inst);
+      if let Some(&index) = key_to_index.get(&key) {
+        let existing = &mut merged[index];
+        for arch in inst.architectures {
+          if !existing.architectures.contains(&arch) {
+            existing.architectures.push(arch);
+          }
+        }
       } else {
-        if let Some(existing) = merged
-          .iter_mut()
-          .find(|existing| {
-            existing.name == inst.name
-              && existing.description == inst.description
-              && existing.args == inst.args
-              && existing.arg_types == inst.arg_types
-          })
-        {
-          for arch in inst.architectures {
-            if !existing.architectures.contains(&arch) {
-              existing.architectures.push(arch);
+        key_to_index.insert(key, merged.len());
+        merged.push(inst);
+      }
+    }
+
+    // Parse special registers (only from RDNA files to avoid duplicates)
+    if input
+      .file_name()
+      .and_then(|n| n.to_str())
+      .map(|s| s.contains("rdna"))
+      .unwrap_or(false)
+    {
+      if let Ok(registers) = parse_special_registers(input) {
+        for reg in registers {
+          if is_plain_vector_or_scalar_register(&reg.name.to_ascii_lowercase()) {
+            continue;
+          }
+          let key = reg.name.to_ascii_lowercase();
+          if let Some(existing) = special_registers_by_name.get_mut(&key) {
+            let SpecialRegister { description, value, .. } = reg;
+            if let Some(description) = description {
+              let should_replace = match &existing.description {
+                Some(current) => description.len() > current.len(),
+                None => true,
+              };
+              if should_replace {
+                existing.description = Some(description);
+              }
             }
+            if existing.value.is_none() {
+              existing.value = value;
+            }
+          } else {
+            special_registers_by_name.insert(key, reg);
           }
         }
       }
     }
   }
 
-  let json = serde_json::to_string_pretty(&merged)?;
+  // Sort special registers by name for consistent output
+  let mut all_special_registers: Vec<SpecialRegister> = special_registers_by_name.into_values().collect();
+  all_special_registers.sort_by(|a, b| a.name.cmp(&b.name));
+
+  let isa_output = IsaOutput {
+    instructions: merged,
+    special_registers: all_special_registers,
+  };
+
+  let json = serde_json::to_string_pretty(&isa_output)?;
 
   if let Some(output_path) = output {
     if let Some(parent) = output_path.parent() {

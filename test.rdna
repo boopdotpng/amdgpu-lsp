@@ -1,24 +1,58 @@
-; Sample RDNA ISA instruction stream for syntax highlighting and LSP testing
-; Not meant to assemble or run on hardware
+; Compact RDNA ISA test file for LSP functionality
+; Exercises syntax highlighting, hover, goto-branch, and diagnostics
 
-s_mov_b32 s0, 0x3f800000 ; 1.0f
-s_mov_b32 s1, 0b101010   ; 42
-s_mov_b32 s2, -7
+; === Basic scalar + vector ===
+start:
+  s_mov_b32       s0, 0x3f800000          ; 1.0f
+  s_mov_b32       s1, -1                  ; negative literal
+  s_mov_b64       s[2:3], 0x123456789ABCDEF0
+  v_mov_b32       v0, s0
+  v_mov_b32       v1, 1.25
+  v_add_f32       v2, v0, v1
+  v_cmp_eq_f32    vcc, v0, v1
+  v_cndmask_b32   v3, v0, v1, vcc
 
-v_mov_b32 v0, s0
-v_mov_b32 v1, s1
-v_mov_b32 v2, s2
+; === Memory + LDS ===
+  buffer_load_dword   v4, v0, s[0:3], s4
+  buffer_store_dword  v4, v0, s[0:3], s4
+  global_load_dword   v5, v[2:3], off
+  global_store_dword  v[2:3], v5, off
+  ds_read_b32         v6, v0
+  ds_write_b32        v0, v6
 
-v_add_f32 v3, v0, v1
-v_mul_f32 v4, v3, v0
-v_sub_f32 v5, v4, v2
+; === Special registers ===
+  s_mov_b32       m0, 0
+  s_mov_b64       exec, 0
+  s_mov_b64       vcc, -1
+  v_mov_b32       v7, exec_lo
+  v_mov_b32       v8, exec_hi
+  v_mov_b32       v9, vcc_lo
+  v_mov_b32       v10, vcc_hi
+  v_mov_b32_e64   v11, null
 
-s_cmp_eq_u32 s1, 42
-s_and_b64 vcc, exec, vcc
-s_mov_b64 exec, 0x0
-s_endpgm
+; === Control flow + labels (goto-branch targets) ===
+  s_add_u32       s10, s10, 1
+  s_cmp_lt_u32    s10, 4
+  s_cbranch_scc1  loop
+  s_branch        done
+  v_ashrrev_i32 
 
-; Extra tokens for highlighting coverage
-v_mov_b32 v[0:3], v0
-s_mov_b32 m0, 0
-v_xor_b32 v8, v7, null
+loop:
+  v_add_u32       v12, v12, 1
+  s_cbranch_scc1  loop
+
+done:
+  s_waitcnt       vmcnt(0) & lgkmcnt(0)
+  s_endpgm
+
+; === Edge cases ===
+  v_mov_b32       v[0:3], v0              ; register range
+  s_mov_b32       s[20:22], s1            ; scalar range
+  v_add_f32	v13,	v1,	v2                 ; tabs
+  s_mov_b32       s99, 0xFFFFFFFF         ; max 32-bit literal
+  v_mov_b32       v14, -2.5e-3            ; scientific notation
+
+; === Intentional diagnostics ===
+  s_branch        missing_label           ; undefined label
+  s_mov_b32       s_bad, 0                ; invalid register
+  v_add_f32       v15, v1                 ; missing operand

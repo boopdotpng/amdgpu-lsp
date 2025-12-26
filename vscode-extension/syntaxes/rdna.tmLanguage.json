@@ -4,7 +4,9 @@
   "scopeName": "source.rdna",
   "patterns": [
     { "include": "#comments" },
+    { "include": "#labels" },
     { "include": "#mnemonic" },
+    { "include": "#special-registers" },
     { "include": "#registers" },
     { "include": "#numbers" }
   ],
@@ -21,11 +23,43 @@
         }
       ]
     },
+    "labels": {
+      "patterns": [
+        {
+          "name": "entity.name.label.rdna",
+          "match": "^\\s*[A-Za-z_][A-Za-z0-9_]*:"
+        },
+        {
+          "name": "entity.name.label.reference.rdna",
+          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*(?:,|$))"
+        }
+      ]
+    },
     "mnemonic": {
       "patterns": [
         {
           "name": "keyword.operator.instruction.rdna",
           "match": "^(\\s*(?:[0-9A-Fa-f]{4,}:)?\\s*(?:[0-9A-Fa-f]{8}\\s+)*)(?i:[.A-Za-z][A-Za-z0-9_.]*)(?=\\s|$)"
+        }
+      ]
+    },
+    "special-registers": {
+      "patterns": [
+        {
+          "name": "constant.language.register.special.rdna",
+          "match": "\\b(exec|exec_lo|exec_hi|vcc|vcc_lo|vcc_hi|m0|scc|null|off|tba|tma|flat_scratch|flat_scratch_lo|flat_scratch_hi|src_scc|ttmp[0-9]|ttmp1[0-5])\\b"
+        },
+        {
+          "name": "constant.language.register.special.rdna",
+          "match": "\\b(attr[0-9]|attr[12][0-9]|attr3[0-2])\\b"
+        },
+        {
+          "name": "constant.language.register.special.rdna",
+          "match": "\\b(pos[0-3]|param[0-9]|param[12][0-9]|param3[01])\\b"
+        },
+        {
+          "name": "constant.language.register.special.rdna",
+          "match": "\\b(mrt[0-7]|mrtz)\\b"
         }
       ]
     },
@@ -38,10 +72,6 @@
         {
           "name": "variable.other.register.rdna",
           "match": "\\b[vs]\\[[0-9]+(?::[0-9]+)?\\]\\b"
-        },
-        {
-          "name": "variable.other.register.rdna",
-          "match": "\\b(vcc|vcc_lo|vcc_hi|exec|exec_lo|exec_hi|m0|scc|null)\\b"
         }
       ]
     },
