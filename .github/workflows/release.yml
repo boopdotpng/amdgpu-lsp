@@ -9,7 +9,36 @@ permissions:
   contents: write
 
 jobs:
+  isa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: isa-json
+      - name: Fetch ISA XMLs
+        shell: bash
+        run: |
+          tmp_dir="$(mktemp -d)"
+          trap 'rm -rf "${tmp_dir}"' EXIT
+          curl -L "https://gpuopen.com/download/machine-readable-isa/latest/" -o "${tmp_dir}/isa.zip"
+          mkdir -p amd_gpu_xmls
+          unzip -o "${tmp_dir}/isa.zip" -d amd_gpu_xmls
+      - name: Generate ISA JSON
+        shell: bash
+        run: cargo run --bin parse_isa
+      - name: Upload ISA JSON
+        uses: actions/upload-artifact@v4
+        with:
+          name: isa-json
+          path: data/isa.json
+
   build:
+    needs: isa
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -28,6 +57,10 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: isa-json
+          path: .
       - uses: oven-sh/setup-bun@v1
         with:
           bun-version: "latest"

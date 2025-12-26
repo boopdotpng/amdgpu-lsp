@@ -6,6 +6,39 @@ EXT_DIR="${ROOT_DIR}/vscode-extension"
 DATA_FILE="${ROOT_DIR}/data/isa.json"
 MINIFIED_DATA_FILE="${EXT_DIR}/data/isa.json"
 
+fetch_isa() {
+  echo "Fetching ISA XMLs..."
+  out_dir="${ROOT_DIR}/amd_gpu_xmls"
+  tmp_dir="$(mktemp -d)"
+  zip_path="${tmp_dir}/isa.zip"
+
+  cleanup_fetch() {
+    rm -rf "${tmp_dir}"
+  }
+  trap cleanup_fetch EXIT
+
+  mkdir -p "${out_dir}"
+  curl -L "https://gpuopen.com/download/machine-readable-isa/latest/" -o "${zip_path}"
+  unzip -o "${zip_path}" -d "${out_dir}"
+
+  echo "Downloaded AMDGPU ISA files to ${out_dir}"
+}
+
+ensure_isa_data() {
+  if [ -f "${DATA_FILE}" ]; then
+    return
+  fi
+
+  if [ -d "${ROOT_DIR}/amd_gpu_xmls" ] && [ -n "$(ls -A "${ROOT_DIR}/amd_gpu_xmls")" ]; then
+    echo "ISA XMLs already present, skipping fetch"
+  else
+    fetch_isa
+  fi
+
+  echo "Parsing ISA and generating ${DATA_FILE}..."
+  cargo run --bin parse_isa
+}
+
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [--targets <list>] [--mode <debug|release>] [--no-minify] [--include-meta] [--minify-json]
@@ -81,10 +114,7 @@ else
   PKG_MANAGER_X="npx"
 fi
 
-if [ ! -f "${DATA_FILE}" ]; then
-  echo "Missing ${DATA_FILE}. Run the ISA generator before packaging."
-  exit 1
-fi
+ensure_isa_data
 
 echo "Building extension..."
 cd "${EXT_DIR}"
