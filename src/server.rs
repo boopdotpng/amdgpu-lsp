@@ -12,10 +12,11 @@ use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::{
   CompletionItem, CompletionItemKind, CompletionList, CompletionOptions, CompletionParams,
   CompletionResponse, CompletionTextEdit, Hover, HoverParams,
-  HoverProviderCapability, InitializeParams, InitializeResult, MessageType, ParameterInformation,
-  ParameterLabel, Position, Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions,
-  SignatureHelpParams, SignatureInformation, TextDocumentContentChangeEvent, TextDocumentItem,
-  TextDocumentSyncCapability, TextDocumentSyncKind, TextEdit, Url,
+  GotoDefinitionParams, GotoDefinitionResponse, HoverProviderCapability, InitializeParams,
+  InitializeResult, Location, MessageType, OneOf, ParameterInformation, ParameterLabel, Position,
+  Range, ServerCapabilities, SignatureHelp, SignatureHelpOptions, SignatureHelpParams,
+  SignatureInformation, TextDocumentContentChangeEvent, TextDocumentItem, TextDocumentSyncCapability,
+  TextDocumentSyncKind, TextEdit, Url,
 };
 use tower_lsp::{Client, LanguageServer};
 
@@ -89,6 +90,7 @@ impl LanguageServer for IsaServer {
           retrigger_characters: None,
           work_done_progress_options: Default::default(),
         }),
+        definition_provider: Some(OneOf::Left(true)),
         completion_provider: Some(CompletionOptions {
           trigger_characters: None,
           resolve_provider: Some(false),
@@ -358,6 +360,52 @@ impl LanguageServer for IsaServer {
     }))
   }
 
+  async fn goto_definition(
+    &self,
+    params: GotoDefinitionParams,
+  ) -> Result<Option<GotoDefinitionResponse>> {
+    let uri = params.text_document_position_params.text_document.uri;
+    let position = params.text_document_position_params.position;
+    let doc = match self.get_document(&uri) {
+      Some(doc) => doc,
+      None => return Ok(None),
+    };
+    let line = match doc.text.lines().nth(position.line as usize) {
+      Some(line) => line,
+      None => return Ok(None),
+    };
+    let cursor_byte = utf16_position_to_byte_offset(line, position);
+    if let Some(comment_start) = line.find(';') {
+      if cursor_byte >= comment_start {
+        return Ok(None);
+      }
+    }
+    let (label, _) = match extract_label_at_position(line, position) {
+      Some(value) => value,
+      None => return Ok(None),
+    };
+    let (def_line, def_start, def_end) = match find_label_definition(&doc.text, &label) {
+      Some(value) => value,
+      None => return Ok(None),
+    };
+    let def_text = match doc.text.lines().nth(def_line as usize) {
+      Some(line) => line,
+      None => return Ok(None),
+    };
+    let start = Position {
+      line: def_line,
+      character: byte_offset_to_utf16_position(def_text, def_start),
+    };
+    let end = Position {
+      line: def_line,
+      character: byte_offset_to_utf16_position(def_text, def_end),
+    };
+    Ok(Some(GotoDefinitionResponse::Scalar(Location {
+      uri,
+      range: Range { start, end },
+    })))
+  }
+
   async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
     let uri = params.text_document_position.text_document.uri;
     let position = params.text_document_position.position;
@@ -422,4 +470,63 @@ impl LanguageServer for IsaServer {
   async fn shutdown(&self) -> Result<()> {
     Ok(())
   }
+}
+
+fn is_label_start(b: u8) -> bool {
+  (b as char).is_ascii_alphabetic() || b == b'_' || b == b'.' || b == b'$'
+}
+
+fn is_label_char(b: u8) -> bool {
+  is_label_start(b) || (b as char).is_ascii_digit()
+}
+
+fn extract_label_at_position(line: &str, position: Position) -> Option<(String, usize)> {
+  let byte_index = utf16_position_to_byte_offset(line, position);
+  let bytes = line.as_bytes();
+  if byte_index > bytes.len() {
+    return None;
+  }
+  let mut start = byte_index;
+  while start > 0 && is_label_char(bytes[start - 1]) {
+    start -= 1;
+  }
+  let mut end = byte_index;
+  while end < bytes.len() && is_label_char(bytes[end]) {
+    end += 1;
+  }
+  if start == end || !is_label_start(bytes[start]) {
+    return None;
+  }
+  Some((line[start..end].to_string(), start))
+}
+
+fn find_label_definition(text: &str, label: &str) -> Option<(u32, usize, usize)> {
+  for (line_idx, line) in text.lines().enumerate() {
+    let line_before_comment = line.splitn(2, ';').next().unwrap_or("");
+    let trimmed = line_before_comment.trim_start();
+    if trimmed.is_empty() {
+      continue;
+    }
+    let colon_idx = match trimmed.find(':') {
+      Some(idx) => idx,
+      None => continue,
+    };
+    let name = trimmed[..colon_idx].trim_end();
+    if name.is_empty() || name != label {
+      continue;
+    }
+    if !name
+      .as_bytes()
+      .iter()
+      .enumerate()
+      .all(|(i, &b)| if i == 0 { is_label_start(b) } else { is_label_char(b) })
+    {
+      continue;
+    }
+    let trimmed_start = line_before_comment.len() - trimmed.len();
+    let start = trimmed_start;
+    let end = start + name.len();
+    return Some((line_idx as u32, start, end));
+  }
+  None
 }
