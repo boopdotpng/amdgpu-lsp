@@ -33,11 +33,9 @@ After this finishes, just reload VS Code (Developer: Reload Window) and you shou
 
 Architecture: The extension registers file types (.rdna3, .rdna35, .cdna4, ... for each arch), but you can use the .rdna extension and set a default architecture for all files if you're only writing for one architecture.
 
-** If you built locally, you will have to modify these.**
+Data Path: Path to `data/isa.json`. Set to the bundled json file inside the extension by default. 
 
-Data Path: Path to `data/isa.json`.
-
-Server Path: Path to the lsp binary, usually `target/debug/amdgpu-lsp` (or release, if you want). 
+Server Path: Path to the lsp binary, usually `target/debug/amdgpu-lsp` (or release, if you want). Set to the executable bundled in the extension by default.
 
 ## resources 
 
