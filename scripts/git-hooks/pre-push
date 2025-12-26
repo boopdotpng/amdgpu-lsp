@@ -1,0 +1,53 @@
+#!/bin/bash
+set -euo pipefail
+
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${HOOK_DIR}/../.." && pwd)"
+SET_VERSION="${ROOT_DIR}/scripts/set-version.sh"
+
+read_version() {
+  rg -n "^version = " "${ROOT_DIR}/Cargo.toml" | head -n 1 | sed -E 's/^version = "([^"]+)".*/\1/'
+}
+
+read_extension_version() {
+  rg -n '"version":' "${ROOT_DIR}/vscode-extension/package.json" | head -n 1 | sed -E 's/.*"version": "([^"]+)".*/\1/'
+}
+
+set_from_tag() {
+  local tag="$1"
+  local version="${tag#v}"
+
+  if ! [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    return 0
+  fi
+
+  local current
+  local current_ext
+  current="$(read_version)"
+  current_ext="$(read_extension_version)"
+
+  if [ "${current}" = "${version}" ] && [ "${current_ext}" = "${version}" ]; then
+    return 0
+  fi
+
+  "${SET_VERSION}" "${version}"
+  cat <<EOF
+Version updated to ${version}. Please commit the changes before pushing the tag:
+  git add Cargo.toml vscode-extension/package.json
+  git commit -m "Release v${version}"
+  git push --follow-tags
+EOF
+  exit 1
+}
+
+while read -r local_ref _ remote_ref _; do
+  if [[ "${local_ref}" == refs/tags/* ]] || [[ "${remote_ref}" == refs/tags/* ]]; then
+    tag="${local_ref#refs/tags/}"
+    if [ "${tag}" = "${local_ref}" ]; then
+      tag="${remote_ref#refs/tags/}"
+    fi
+    set_from_tag "${tag}"
+  fi
+done
+
+exit 0

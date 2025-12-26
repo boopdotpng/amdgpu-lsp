@@ -28,6 +28,96 @@ Any work beyond this point is superflous and is not worth my time. This is 80% o
 
 After this finishes, just reload VS Code (Developer: Reload Window) and you should see the extension. 
 
+### xml parsing information 
+The `parse_isa` binary reads AMDGPU XML files (from `amd_gpu_xmls/` by default), extracts a subset of fields, merges instructions across architectures, and writes `data/isa.json`. XML is parsed with `quick_xml` and trimmed text nodes.
+
+#### instruction parsing
+- `Instruction/InstructionName` (skips names inside `AliasedInstructionNames`)
+- `Instruction/ArchitectureName` (first one in a file only; used as the file's architecture label)
+- `Instruction/Description`
+- `Instruction/InstructionEncoding/EncodingName`
+- `Instruction/InstructionEncoding/Operand` attributes: `Input`, `Output`, `IsImplicit`, `Order`
+- `Instruction/InstructionEncoding/Operand` text fields: `FieldName`, `OperandType`, `DataFormatName`, `OperandSize`
+
+Derived fields:
+- `args`, `arg_types`, `arg_data_types` are built from the first encoding only
+- operands are sorted by `Order`; implicit operands are skipped
+- `arg_types` is inferred from `OperandType` into: `immediate`, `label`, `memory`, `register`, `register_or_inline`,
+  `special`, or `unknown`
+- `available_encodings` is the set of `EncodingName` values (sorted)
+
+#### architecture normalization
+Architecture names are normalized to a compact `rdnaN`/`cdnaN` form:
+- lowercased, whitespace trimmed
+- tokens containing `rdna` or `cdna` set the family
+- a version is taken from the same token (e.g. `rdna3`) or a later numeric token (e.g. `rdna 3`)
+- if no family is found, the name is lowercased with spaces removed
+
+#### special register parsing
+Special registers are only parsed from RDNA XML files (file name contains `rdna`).
+- `OperandPredefinedValues/PredefinedValue/Name`
+- `OperandPredefinedValues/PredefinedValue/Description` (ignores `Value`)
+
+Post-processing:
+- drops numeric literals (e.g. `0`) and plain `sN`/`vN` registers
+- drops empty descriptions or `<p>See above.</p>` placeholders
+- overrides descriptions for core registers like `exec`, `scc`, `vcc`, `pc`, `flat_scratch`
+- merges duplicates by name, preferring the longest description
+- compresses contiguous ranges for `attr`, `param`, `mrt`, `pos`, `ttmp` when 3+ entries are present
+- when not compressed, uses the first non-empty description as a fallback for that prefix
+
+#### edge cases and current behavior
+- If `ArchitectureName` is missing, the architecture label can be empty; the instruction still emits with an empty
+  architecture tag after normalization.
+- Aliased instruction names are ignored to avoid duplicates.
+- If an instruction has multiple encodings, only the first encoding drives `args` and type inference.
+- Missing operand fields yield `unknown` values (e.g. `OperandType` or `DataFormatName`).
+- Descriptions from XML are not HTML-stripped; they are stored as-is unless filtered by the rules above.
+
+#### data/isa.json format
+Top-level shape:
+```json
+{
+  "instructions": [ ... ],
+  "special_registers": {
+    "singles": [ ... ],
+    "ranges": [ ... ]
+  }
+}
+```
+
+Instruction entry:
+```json
+{
+  "name": "v_add_f32",
+  "architectures": ["rdna3", "rdna35"],
+  "description": "Adds two FP32 values.",
+  "args": ["src0", "src1", "dst"],
+  "arg_types": ["register", "register", "register"],
+  "arg_data_types": ["f32", "f32", "f32"],
+  "available_encodings": ["VOP2", "VOP3"]
+}
+```
+
+Special register entries:
+```json
+{
+  "singles": [
+    { "name": "exec", "description": "Wavefront execution mask (64-bit). Each bit enables a lane." }
+  ],
+  "ranges": [
+    {
+      "prefix": "attr",
+      "start": 0,
+      "count": 32,
+      "description": "Attribute register.",
+      "overrides": [
+        { "index": 7, "description": "Attribute register for XYZ." }
+      ]
+    }
+  ]
+}
+```
 
 ### extension options 
 
@@ -36,6 +126,24 @@ Architecture: The extension registers file types (.rdna3, .rdna35, .cdna4, ... f
 Data Path: Path to `data/isa.json`. Set to the bundled json file inside the extension by default. 
 
 Server Path: Path to the lsp binary, usually `target/debug/amdgpu-lsp` (or release, if you want). Set to the executable bundled in the extension by default.
+
+### release versioning
+
+To auto-sync versions when you push tags, enable the repo hook:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+When you push a tag like `v0.2.1`, the hook updates `Cargo.toml` and `vscode-extension/package.json` to match, then stops the push so you can commit the version bump.
+
+### contributing
+
+If you plan to push tags, enable the hook so version bumps are not missed:
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
 
 ## resources 
 
