@@ -129,21 +129,15 @@ Server Path: Path to the lsp binary, usually `target/debug/amdgpu-lsp` (or relea
 
 ### release versioning
 
-To auto-sync versions when you push tags, enable the repo hook:
+Create releases with the script below. It updates the Cargo and VS Code extension versions, commits, tags, and pushes the tag to trigger CI:
 
 ```bash
-git config core.hooksPath scripts/git-hooks
+scripts/create_release.sh v0.2.4
 ```
-
-When you push a tag like `v0.2.1`, the hook updates `Cargo.toml` and `vscode-extension/package.json` to match, then stops the push so you can commit the version bump.
 
 ### contributing
 
-If you plan to push tags, enable the hook so version bumps are not missed:
-
-```bash
-git config core.hooksPath scripts/git-hooks
-```
+Use `scripts/create_release.sh` for version bumps and tags so the extension and server stay in sync.
 
 ## resources 
 
