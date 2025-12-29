@@ -147,6 +147,16 @@ impl LanguageServer for IsaServer {
         return Ok(None);
       }
     };
+    let line = match doc.text.lines().nth(position.line as usize) {
+      Some(line) => line,
+      None => return Ok(None),
+    };
+    let cursor_byte = utf16_position_to_byte_offset(line, position);
+    if let Some(comment_start) = line_comment_start(line) {
+      if cursor_byte >= comment_start {
+        return Ok(None);
+      }
+    }
     let word = match extract_word_at_position(&doc.text, position) {
       Some(word) => word,
       None => {
@@ -202,7 +212,7 @@ impl LanguageServer for IsaServer {
       None => return Ok(None),
     };
     let cursor_byte = utf16_position_to_byte_offset(line, position);
-    if let Some(comment_start) = line.find(';') {
+    if let Some(comment_start) = line_comment_start(line) {
       if cursor_byte >= comment_start {
         return Ok(None);
       }
@@ -329,7 +339,7 @@ impl LanguageServer for IsaServer {
       None => return Ok(None),
     };
     let cursor_byte = utf16_position_to_byte_offset(line, position);
-    if let Some(comment_start) = line.find(';') {
+    if let Some(comment_start) = line_comment_start(line) {
       if cursor_byte >= comment_start {
         return Ok(None);
       }
@@ -382,6 +392,11 @@ impl LanguageServer for IsaServer {
       Some(line) => line,
       None => return Ok(None),
     };
+    if let Some(comment_start) = line_comment_start(line) {
+      if prefix_start >= comment_start {
+        return Ok(None);
+      }
+    }
 
     // Only show completions for the first word on a line (the instruction)
     let line_before_prefix = &line[..prefix_start];
@@ -485,6 +500,15 @@ fn strip_leading_label(line: &str) -> (usize, &str) {
   (trimmed_offset, trimmed)
 }
 
+fn line_comment_start(line: &str) -> Option<usize> {
+  match (line.find(';'), line.find("//")) {
+    (Some(semi), Some(slash)) => Some(semi.min(slash)),
+    (Some(semi), None) => Some(semi),
+    (None, Some(slash)) => Some(slash),
+    (None, None) => None,
+  }
+}
+
 fn strip_leading_disasm_prefix(line: &str) -> (usize, &str) {
   let trimmed = line.trim_start();
   let trimmed_offset = line.len() - trimmed.len();
@@ -547,7 +571,10 @@ fn extract_label_at_position(line: &str, position: Position) -> Option<(String, 
 
 fn find_label_definition(text: &str, label: &str) -> Option<(u32, usize, usize)> {
   for (line_idx, line) in text.lines().enumerate() {
-    let line_before_comment = line.splitn(2, ';').next().unwrap_or("");
+    let line_before_comment = match line_comment_start(line) {
+      Some(comment_start) => &line[..comment_start],
+      None => line,
+    };
     let trimmed = line_before_comment.trim_start();
     if trimmed.is_empty() {
       continue;
