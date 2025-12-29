@@ -46,6 +46,8 @@ done:
   s_waitcnt       vmcnt(0) & lgkmcnt(0)
   s_endpgm
 
+
+edge_cases:
 ; === Edge cases ===
   v_mov_b32       v[0:3], v0              ; register range
   s_mov_b32       s[20:22], s1            ; scalar range
@@ -53,7 +55,13 @@ done:
   s_mov_b32       s99, 0xFFFFFFFF          ; max 32-bit literal
   v_mov_b32       v14, -2.5e-3            ; scientific notation
 
+diagnostics :
 ; === Intentional diagnostics ===
   s_branch        missing_label           ; undefined label
   s_mov_b32       s_bad, 0                ; invalid register
   v_add_f32       v15, v1                 ; missing operand
+  s_endpgm
+
+bad_inputs:
+  s_endpgm
+  v_add_f32 4 4 4

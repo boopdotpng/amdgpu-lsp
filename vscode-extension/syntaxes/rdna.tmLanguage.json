@@ -4,7 +4,7 @@
   "scopeName": "source.rdna",
   "patterns": [
     { "include": "#comments" },
-    { "include": "#labels" },
+    { "include": "#label-definitions" },
     { "include": "#mnemonic" },
     { "include": "#special-registers" },
     { "include": "#registers" },
@@ -23,15 +23,11 @@
         }
       ]
     },
-    "labels": {
+    "label-definitions": {
       "patterns": [
         {
           "name": "entity.name.label.rdna",
-          "match": "^\\s*[A-Za-z_][A-Za-z0-9_]*:"
-        },
-        {
-          "name": "entity.name.label.reference.rdna",
-          "match": "\\b[A-Za-z_][A-Za-z0-9_]*(?=\\s*(?:,|$))"
+          "match": "^\\s*[A-Za-z_][A-Za-z0-9_]*\\s*:"
         }
       ]
     },

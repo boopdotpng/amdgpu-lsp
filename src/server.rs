@@ -92,7 +92,7 @@ impl LanguageServer for IsaServer {
         }),
         definition_provider: Some(OneOf::Left(true)),
         completion_provider: Some(CompletionOptions {
-          trigger_characters: None,
+          trigger_characters: Some(vec!["_".to_string(), ".".to_string()]),
           resolve_provider: Some(false),
           work_done_progress_options: Default::default(),
           all_commit_characters: None,
@@ -111,13 +111,6 @@ impl LanguageServer for IsaServer {
       language_id,
       ..
     } = params.text_document;
-    self
-      .client
-      .log_message(
-        MessageType::INFO,
-        format!("didOpen: {} (language: {}, len: {})", uri, language_id, text.len()),
-      )
-      .await;
     if let Ok(mut store) = self.docs.lock() {
       store.docs.insert(
         uri,
@@ -141,42 +134,22 @@ impl LanguageServer for IsaServer {
         entry.text = text;
         new_len = Some(entry.text.len());
       }
-      if let Some(len) = new_len {
-        self
-          .client
-          .log_message(MessageType::INFO, format!("didChange: {} (len: {})", uri, len))
-          .await;
-      }
+      let _ = new_len;
     }
   }
 
   async fn hover(&self, params: HoverParams) -> Result<Option<Hover>> {
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    self
-      .client
-      .log_message(
-        MessageType::INFO,
-        format!("hover request: {} @ {}:{}", uri, position.line, position.character),
-      )
-      .await;
     let doc = match self.get_document(&uri) {
       Some(doc) => doc,
       None => {
-        self
-          .client
-          .log_message(MessageType::WARNING, format!("hover: no document for {}", uri))
-          .await;
         return Ok(None);
       }
     };
     let word = match extract_word_at_position(&doc.text, position) {
       Some(word) => word,
       None => {
-        self
-          .client
-          .log_message(MessageType::INFO, "hover: no word at position".to_string())
-          .await;
         return Ok(None);
       }
     };
@@ -195,13 +168,7 @@ impl LanguageServer for IsaServer {
     let key = split.base.to_ascii_lowercase();
     let entries = match self.index.get(&key) {
       Some(entries) => entries,
-      None => {
-        self
-          .client
-          .log_message(MessageType::INFO, format!("hover: no entry for {word} (base: {})", split.base))
-          .await;
-        return Ok(None);
-      }
+      None => return Ok(None),
     };
     let override_arch = self.architecture_override.lock().ok().and_then(|value| value.clone());
     if let Some(filter) = architecture_filter(&doc.language_id, override_arch.as_ref()) {
@@ -210,15 +177,6 @@ impl LanguageServer for IsaServer {
           contents: format_hover(entry, &split.variant),
           range: None,
         }));
-      }
-      if entries.len() > 1 {
-        self
-          .client
-          .log_message(
-            MessageType::INFO,
-            format!("hover: entry {word} filtered out by architecture {filter}"),
-          )
-          .await;
       }
       return Ok(None);
     }
@@ -231,21 +189,9 @@ impl LanguageServer for IsaServer {
   async fn signature_help(&self, params: SignatureHelpParams) -> Result<Option<SignatureHelp>> {
     let uri = params.text_document_position_params.text_document.uri;
     let position = params.text_document_position_params.position;
-    self
-      .client
-      .log_message(
-        MessageType::INFO,
-        format!("signature_help request: {} @ {}:{}", uri, position.line, position.character),
-      )
-      .await;
-
     let doc = match self.get_document(&uri) {
       Some(doc) => doc,
       None => {
-        self
-          .client
-          .log_message(MessageType::WARNING, format!("signature_help: no document for {}", uri))
-          .await;
         return Ok(None);
       }
     };
@@ -262,9 +208,13 @@ impl LanguageServer for IsaServer {
       }
     }
 
+    let (label_offset, line_after_label) = strip_leading_label(line);
+    if cursor_byte < label_offset {
+      return Ok(None);
+    }
+
     // Find the instruction at the start of the line (before any spaces/commas)
-    let instruction = line
-      .trim_start()
+    let instruction = line_after_label
       .split(|c: char| c.is_whitespace() || c == ',')
       .next()
       .unwrap_or("");
@@ -279,13 +229,6 @@ impl LanguageServer for IsaServer {
     let entries = match self.index.get(&key) {
       Some(entries) => entries,
       None => {
-        self
-          .client
-          .log_message(
-            MessageType::INFO,
-            format!("signature_help: no entry for {} (base: {})", instruction, split.base),
-          )
-          .await;
         return Ok(None);
       }
     };
@@ -301,7 +244,12 @@ impl LanguageServer for IsaServer {
       &entries[0]
     };
 
+    if entry.args.is_empty() {
+      return Ok(None);
+    }
+
     let line_before_cursor = &line[..cursor_byte.min(line.len())];
+    let (_, line_before_cursor) = strip_leading_label(line_before_cursor);
     let trimmed_before_cursor = line_before_cursor.trim_start();
     let args_section = match trimmed_before_cursor
       .splitn(2, |c: char| c.is_whitespace())
@@ -435,7 +383,31 @@ impl LanguageServer for IsaServer {
       None => return Ok(None),
     };
 
+    // Only show completions for the first word on a line (the instruction)
+    let line_before_prefix = &line[..prefix_start];
+    let (label_offset, line_before_prefix) = strip_leading_label(line_before_prefix);
+    if prefix_start < label_offset {
+      return Ok(None);
+    }
+    let (_, line_before_prefix) = strip_leading_disasm_prefix(line_before_prefix);
+    let trimmed_line_before = line_before_prefix.trim_start();
+    if !trimmed_line_before.is_empty() {
+      // There's already an instruction on this line, don't suggest more
+      return Ok(None);
+    }
+
     let prefix_lower = trimmed_prefix.to_ascii_lowercase();
+
+    // If the prefix exactly matches a no-arg instruction, don't show completions
+    // (the instruction is complete, nothing more to type)
+    if let Some(entries) = self.index.get(&prefix_lower) {
+      if let Some(entry) = entries.first() {
+        if entry.name.eq_ignore_ascii_case(trimmed_prefix) && entry.args.is_empty() {
+          return Ok(None);
+        }
+      }
+    }
+
     let start_char = byte_offset_to_utf16_position(line, prefix_start);
     let start = Position {
       line: position.line,
@@ -446,7 +418,7 @@ impl LanguageServer for IsaServer {
     let mut seen = std::collections::HashSet::new();
     let mut items = Vec::new();
     for (name, entries) in &self.index {
-      if !name.starts_with(&prefix_lower) {
+      if !name.contains(&prefix_lower) {
         continue;
       }
       if let Some(entry) = entries.first() {
@@ -468,7 +440,7 @@ impl LanguageServer for IsaServer {
     items.sort_by(|a, b| a.label.cmp(&b.label));
 
     Ok(Some(CompletionResponse::List(CompletionList {
-      is_incomplete: false,
+      is_incomplete: true,
       items,
     })))
   }
@@ -484,6 +456,73 @@ fn is_label_start(b: u8) -> bool {
 
 fn is_label_char(b: u8) -> bool {
   is_label_start(b) || (b as char).is_ascii_digit()
+}
+
+fn is_hex_digit(b: u8) -> bool {
+  (b as char).is_ascii_hexdigit()
+}
+
+fn strip_leading_label(line: &str) -> (usize, &str) {
+  let trimmed = line.trim_start();
+  let trimmed_offset = line.len() - trimmed.len();
+  let bytes = trimmed.as_bytes();
+  if bytes.is_empty() {
+    return (line.len(), "");
+  }
+  if !is_label_start(bytes[0]) {
+    return (trimmed_offset, trimmed);
+  }
+  let mut idx = 1;
+  while idx < bytes.len() && is_label_char(bytes[idx]) {
+    idx += 1;
+  }
+  if idx < bytes.len() && bytes[idx] == b':' {
+    let after_colon = &trimmed[idx + 1..];
+    let after_ws = after_colon.trim_start();
+    let after_ws_offset = trimmed_offset + idx + 1 + (after_colon.len() - after_ws.len());
+    return (after_ws_offset, after_ws);
+  }
+  (trimmed_offset, trimmed)
+}
+
+fn strip_leading_disasm_prefix(line: &str) -> (usize, &str) {
+  let trimmed = line.trim_start();
+  let trimmed_offset = line.len() - trimmed.len();
+  let bytes = trimmed.as_bytes();
+  if bytes.is_empty() {
+    return (line.len(), "");
+  }
+
+  let mut idx = 0;
+  let mut hex_len = 0;
+  while idx < bytes.len() && is_hex_digit(bytes[idx]) {
+    idx += 1;
+    hex_len += 1;
+  }
+  if hex_len >= 4 && idx < bytes.len() && bytes[idx] == b':' {
+    idx += 1;
+    while idx < bytes.len() && (bytes[idx] as char).is_ascii_whitespace() {
+      idx += 1;
+    }
+  } else {
+    idx = 0;
+  }
+
+  loop {
+    if idx + 8 <= bytes.len() && bytes[idx..idx + 8].iter().all(|&b| is_hex_digit(b)) {
+      let mut next = idx + 8;
+      if next < bytes.len() && (bytes[next] as char).is_ascii_whitespace() {
+        while next < bytes.len() && (bytes[next] as char).is_ascii_whitespace() {
+          next += 1;
+        }
+        idx = next;
+        continue;
+      }
+    }
+    break;
+  }
+
+  (trimmed_offset + idx, &trimmed[idx..])
 }
 
 fn extract_label_at_position(line: &str, position: Position) -> Option<(String, usize)> {
